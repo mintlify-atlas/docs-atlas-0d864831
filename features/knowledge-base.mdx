@@ -1,0 +1,178 @@
+---
+title: "Knowledge base"
+description: "Build a personal AI-powered knowledge repository from your documents and query it across every DeepTutor module."
+---
+
+A knowledge base is a collection of documents that DeepTutor indexes into a hybrid knowledge graph and vector store. Once built, every other module — Smart Solver, Question Generator, Guided Learning, Deep Research — can retrieve context from it automatically.
+
+## How it works
+
+When you upload files, DeepTutor runs them through a multi-stage pipeline:
+
+1. **Parsing** — PDFs are parsed with Docling/MinerU; TXT and Markdown files are read directly.
+2. **Chunking & embedding** — Document chunks are embedded and stored in a vector store for semantic search.
+3. **Knowledge graph construction** — Entities and relations are extracted and stored in a graph store (`rag_storage/`).
+4. **Numbered-item extraction** — Definitions, theorems, equations, figures, and tables are catalogued in `numbered_items.json` for precise lookup by the Query Item tool.
+
+## Supported file types
+
+| Format | Extension | Notes |
+|:--|:--|:--|
+| PDF | `.pdf` | Parsed with Docling/MinerU; images extracted |
+| Plain text | `.txt` | Read directly |
+| Markdown | `.md` | Read directly |
+
+## Creating a knowledge base
+
+<Steps>
+  <Step title="Open the knowledge base manager">
+    Navigate to `http://localhost:3782/knowledge` in your browser.
+  </Step>
+  <Step title="Create a new knowledge base">
+    Click **New Knowledge Base**, enter a name, then click **Create**.
+  </Step>
+  <Step title="Upload your documents">
+    Upload one or more PDF, TXT, or Markdown files. You can upload multiple files at once.
+  </Step>
+  <Step title="Monitor indexing">
+    Watch the terminal for progress. Indexing time scales with document size and your embedding API throughput.
+  </Step>
+  <Step title="Select the knowledge base">
+    Once indexing completes, select the knowledge base from any module's dropdown to start using it.
+  </Step>
+</Steps>
+
+<Note>
+  Knowledge base names are used as directory names on disk. Use alphanumeric characters and underscores — avoid spaces and special characters.
+</Note>
+
+## RAG retrieval modes
+
+DeepTutor supports two retrieval strategies. You can configure the default per-module in `config/main.yaml`.
+
+<Tabs>
+  <Tab title="Hybrid (recommended)">
+    Combines dense vector search with graph-based entity retrieval. The knowledge graph links related concepts across your documents, making it well suited for questions that span multiple topics or require structured reasoning.
+
+    ```yaml
+    # config/main.yaml
+    solve:
+      rag_mode: hybrid
+    ```
+  </Tab>
+  <Tab title="Naive">
+    Pure dense vector similarity search. Faster and cheaper, but misses cross-document concept links. Suitable for simple factual lookups or smaller knowledge bases.
+
+    ```yaml
+    # config/main.yaml
+    question:
+      rag_mode: naive
+    ```
+  </Tab>
+</Tabs>
+
+## Adding documents incrementally
+
+You can add documents to an existing knowledge base without rebuilding it from scratch. Only the new files are processed; the existing knowledge graph is preserved and merged automatically.
+
+```bash
+# Add a single document
+python -m src.knowledge.add_documents my_textbook --docs new_chapter.pdf
+
+# Add multiple documents
+python -m src.knowledge.add_documents my_textbook --docs ch10.pdf ch11.pdf
+
+# Add all files from a directory
+python -m src.knowledge.add_documents my_textbook --docs-dir ./new_materials/
+```
+
+<Tip>
+  Always prefer incremental addition over re-initializing. Re-initialization reprocesses every file and incurs full embedding API costs.
+</Tip>
+
+## Management commands
+
+```bash
+# List all knowledge bases
+python -m src.knowledge.start_kb list
+
+# View info and update history for a specific knowledge base
+python -m src.knowledge.start_kb info my_textbook
+
+# Set the default knowledge base
+python -m src.knowledge.start_kb set-default my_textbook
+
+# Delete a knowledge base
+python -m src.knowledge.start_kb delete old_kb
+
+# Rebuild the RAG storage (if the graph is corrupted)
+python -m src.knowledge.start_kb clean-rag my_textbook
+python -m src.knowledge.start_kb refresh my_textbook
+```
+
+## Data storage
+
+Each knowledge base is stored under `data/knowledge_bases/`:
+
+```
+data/knowledge_bases/
+└── my_textbook/
+    ├── metadata.json          # Name, created_at, update_history
+    ├── numbered_items.json    # Extracted definitions, theorems, equations, etc.
+    ├── raw/                   # Original uploaded documents
+    ├── images/                # Figures extracted from PDFs
+    ├── content_list/          # Parsed document structure per file
+    └── rag_storage/           # Knowledge graph and vector store
+        ├── kv_store_full_entities.json
+        ├── kv_store_full_relations.json
+        └── kv_store_text_chunks.json
+```
+
+The `metadata.json` file records every create and add-documents operation with timestamps:
+
+```json
+{
+  "name": "my_textbook",
+  "created_at": "2025-01-15 10:30:00",
+  "last_updated": "2025-01-20 14:25:00",
+  "update_history": [
+    { "timestamp": "2025-01-15 10:30:00", "action": "create", "files_added": 3 },
+    { "timestamp": "2025-01-20 14:25:00", "action": "add_documents", "files_added": 1 }
+  ]
+}
+```
+
+## Demo knowledge bases
+
+Two pre-built knowledge bases are available for download to help you get started immediately.
+
+<CardGroup cols={2}>
+  <Card title="Research papers" icon="file-text">
+    Five papers from HKUDS lab, including AI-Researcher and LightRAG. Good for testing research-oriented queries.
+  </Card>
+  <Card title="Data science textbook" icon="book-open">
+    Eight chapters, 296 pages of deep representation learning content. Good for testing long-form document retrieval.
+  </Card>
+</CardGroup>
+
+<Steps>
+  <Step title="Download the demo archives">
+    Download from [Google Drive](https://drive.google.com/drive/folders/1iWwfZXiTuQKQqUYb5fGDZjLCeTUP6DA6?usp=sharing).
+  </Step>
+  <Step title="Extract into the data/ directory">
+    Extract the archive so that the knowledge base folders appear under `data/knowledge_bases/`.
+  </Step>
+</Steps>
+
+<Warning>
+  Demo knowledge bases were built with `text-embedding-3-large` at `dimensions = 3072`. If you use a different embedding model or dimension, queries may return poor results. Build your own knowledge base with your configured embedding model for best results.
+</Warning>
+
+## How knowledge bases are used across modules
+
+| Module | How it uses the knowledge base |
+|:--|:--|
+| **Smart Solver** | RAG retrieval (hybrid or naive) at each solve step; Query Item for numbered definitions and theorems |
+| **Question Generator** | Background knowledge retrieval to ground generated questions in source material |
+| **Guided Learning** | LocateAgent reads notebook records; InteractiveAgent may pull supporting content |
+| **Deep Research** | RAG retrieval across planning and research phases; combined with web and paper search |

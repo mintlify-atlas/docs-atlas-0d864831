@@ -1,0 +1,111 @@
+---
+title: "Notebook"
+description: "Organize and revisit your learning records. Notebooks collect outputs from all DeepTutor modules into a single, categorized personal knowledge store."
+---
+
+A notebook is a named collection of learning records. Each record is an output saved from another module — a solved problem, a generated question set, a research report, or a co-writer document. Notebooks give you a persistent, browsable history of your work that other modules (guided learning, idea generation) can read back as source material.
+
+<CardGroup cols={2}>
+  <Card title="Cross-module collection" icon="layers">
+    Accepts records from solver, question generator, deep research, and co-writer.
+  </Card>
+  <Card title="Custom appearance" icon="palette">
+    Each notebook has a configurable color and icon for quick visual identification.
+  </Card>
+  <Card title="Used by guided learning" icon="graduation-cap">
+    Guided learning reads notebook records to generate personalized learning paths.
+  </Card>
+  <Card title="Used by idea generation" icon="lightbulb">
+    Automated IdeaGen extracts knowledge points directly from notebook records.
+  </Card>
+</CardGroup>
+
+## How to use
+
+<Steps>
+  <Step title="Open the notebook page">
+    Navigate to `http://localhost:3782/notebook`.
+  </Step>
+  <Step title="Create a notebook">
+    Click **New Notebook**. Set a name, optional description, color, and icon.
+  </Step>
+  <Step title="Save records from other modules">
+    After completing any activity — solving a problem, generating questions, finishing a research session, or editing in co-writer — click **Add to Notebook** and select the target notebook.
+  </Step>
+  <Step title="Browse and manage records">
+    Open the notebook to view all saved records. Records are sorted and tagged by type and knowledge base.
+  </Step>
+  <Step title="Use notebooks in other modules">
+    In guided learning and idea generation, select a notebook (or multiple notebooks) as the source. The module reads the records automatically.
+  </Step>
+</Steps>
+
+## Creating and managing notebooks
+
+Each notebook has the following properties:
+
+| Property | Description |
+|----------|-------------|
+| Name | Required. Identifies the notebook in the sidebar and module pickers. |
+| Description | Optional freeform notes about the notebook's purpose. |
+| Color | Hex color used for the notebook's visual chip. |
+| Icon | Icon displayed next to the notebook name. |
+
+You can create, edit, rename, and delete notebooks from the notebook page. Deleting a notebook removes the metadata and record list; it does not delete the original output files from other modules.
+
+## Record types
+
+Records are automatically categorized by their source module.
+
+| Record type | Source module | What is stored |
+|-------------|---------------|---------------|
+| Solve | Smart solver | Final answer, solution chain, citations |
+| Question | Question generator | Generated question set and validation report |
+| Research | Deep research | Research report path and metadata |
+| Co-writer | Co-writer | Document content and edit history reference |
+
+When you click **Add to Notebook** inside any module, DeepTutor records a reference to that session's output along with a timestamp, source type, and the knowledge base used (if applicable).
+
+## Cross-module integration
+
+### Guided learning
+
+The guided learning module reads selected notebook records to plan a personalized learning path. You can select records from one or multiple notebooks in the session setup screen. The `LocateAgent` analyzes the combined records to identify 3–5 progressive knowledge points for the session.
+
+### Idea generation
+
+Automated IdeaGen's `MaterialOrganizerAgent` processes notebook records as its primary input. The more varied the record types in the notebook, the broader the pool of knowledge points the agent can discover. You can select a single notebook per idea generation session.
+
+<Tip>
+  Maintain separate notebooks by topic or project to keep idea generation and guided learning sessions focused. A notebook with mixed unrelated records produces less coherent output.
+</Tip>
+
+## Categories and tags
+
+Records are automatically tagged with:
+
+- **Type tag** — `solve`, `question`, `research`, or `co-writer`.
+- **Knowledge base tag** — the name of the knowledge base used in the session (when applicable).
+
+These tags are used for filtering within the notebook view and are passed to downstream modules so agents can understand the provenance of each record.
+
+## Visual customization
+
+Each notebook can be assigned a custom color and icon from the notebook creation or edit dialog. These settings are purely cosmetic — they make it easier to identify notebooks at a glance in the module pickers throughout the application.
+
+## Data storage
+
+Notebook metadata is stored in `data/user/notebook/`. The notebook files contain record lists and metadata; the actual content (reports, solutions, etc.) remains in the module-specific output directories.
+
+```
+data/user/
+├── notebook/              # Notebook metadata and record lists
+├── solve/                 # Solver outputs referenced by notebook records
+├── question/              # Question outputs referenced by notebook records
+├── research/              # Research reports referenced by notebook records
+└── co-writer/             # Co-writer documents referenced by notebook records
+```
+
+<Note>
+  Notebooks and their records persist across sessions. You can close and reopen DeepTutor and all notebooks remain accessible. If you move or delete the underlying output files in `data/user/`, the notebook record will still exist but the linked content will no longer be accessible.
+</Note>

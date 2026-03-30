@@ -1,0 +1,174 @@
+---
+title: "Research"
+description: "Topic optimization and deep research pipeline with WebSocket streaming."
+---
+
+The Research module runs a multi-stage pipeline that decomposes a topic into subtopics, queries various sources (RAG, paper search, web search), and produces a full research report.
+
+## Endpoints
+
+- [`POST /api/v1/research/optimize_topic`](#post-apiv1researchoptimize_topic) — Rephrase or refine a research topic using an LLM.
+- [`WS /api/v1/research/run`](#ws-apiv1researchrun) — Run the full research pipeline over WebSocket.
+
+---
+
+## `POST /api/v1/research/optimize_topic`
+
+Rephrase or iteratively refine a research topic. On the first call (`iteration: 0`) it reformulates the raw topic. On subsequent calls it incorporates feedback.
+
+### Request body
+
+<ParamField body="topic" type="string" required>
+  The research topic or, on iteration > 0, user feedback on the previous result.
+</ParamField>
+
+<ParamField body="iteration" type="number" default="0">
+  Iteration index. `0` for the first call; increment for each feedback round.
+</ParamField>
+
+<ParamField body="previous_result" type="object">
+  The result object returned by the previous call. Required when `iteration > 0`.
+</ParamField>
+
+<ParamField body="kb_name" type="string" default="ai_textbook">
+  Knowledge base to use for context.
+</ParamField>
+
+### Response
+
+<ResponseField name="optimized_topic" type="string">
+  The reformulated topic string.
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Present only if an error occurred.
+</ResponseField>
+
+<RequestExample>
+
+```bash cURL
+curl -X POST http://localhost:8001/api/v1/research/optimize_topic \
+  -H "Content-Type: application/json" \
+  -d '{
+    "topic": "how does attention work in transformers",
+    "iteration": 0,
+    "kb_name": "ai_textbook"
+  }'
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "optimized_topic": "Attention mechanisms in transformer architectures: mathematical foundations and practical applications"
+}
+```
+
+</ResponseExample>
+
+---
+
+## `WS /api/v1/research/run`
+
+Run the full deep research pipeline. The server streams log lines, progress events, and the final report over the connection.
+
+### Initial message
+
+Send this JSON object immediately after the connection opens.
+
+<ParamField body="topic" type="string" required>
+  The research topic.
+</ParamField>
+
+<ParamField body="kb_name" type="string" default="ai_textbook">
+  Knowledge base to use for RAG queries.
+</ParamField>
+
+<ParamField body="plan_mode" type="string" default="medium">
+  Research depth. One of `quick`, `medium`, `deep`, or `auto`.
+
+  | Mode | Subtopics | Max iterations per topic | Mode |
+  |---|---|---|---|
+  | `quick` | 2 | 2 | Fixed |
+  | `medium` | 5 | 4 | Fixed |
+  | `deep` | 8 | 7 | Fixed |
+  | `auto` | Up to 8 | 6 | Flexible |
+</ParamField>
+
+<ParamField body="enabled_tools" type="string[]" default='["RAG"]'>
+  Tools to enable during research. Any combination of `"RAG"`, `"Paper"`, and `"Web"`. Code execution is always enabled.
+</ParamField>
+
+<ParamField body="skip_rephrase" type="boolean" default="false">
+  Skip the internal topic rephrasing step.
+</ParamField>
+
+### Streaming messages
+
+<ResponseField name="type" type="string" required>
+  Message type. One of: `task_id`, `status`, `log`, `progress`, `result`, `error`.
+</ResponseField>
+
+<ResponseField name="task_id" type="string">
+  Returned in the `task_id` message. Unique identifier for this run.
+</ResponseField>
+
+<ResponseField name="content" type="string">
+  Returned in `status`, `log`, and `error` messages.
+</ResponseField>
+
+<ResponseField name="research_id" type="string">
+  Returned in `status` (started) and `result` messages. Identifies this research run.
+</ResponseField>
+
+<ResponseField name="report" type="string">
+  Returned in the `result` message. Full Markdown content of the research report.
+</ResponseField>
+
+<ResponseField name="metadata" type="object">
+  Returned in the `result` message. Pipeline metadata including sources and statistics.
+</ResponseField>
+
+### Example
+
+```javascript
+const ws = new WebSocket('ws://localhost:8001/api/v1/research/run');
+
+ws.onopen = () => {
+  ws.send(JSON.stringify({
+    topic: "Attention mechanisms in transformer architectures",
+    kb_name: "ai_textbook",
+    plan_mode: "medium",
+    enabled_tools: ["RAG", "Web"]
+  }));
+};
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+
+  if (msg.type === 'result') {
+    console.log('Report:', msg.report);
+  } else if (msg.type === 'log') {
+    console.log('[log]', msg.content);
+  }
+};
+```
+
+Example streaming messages:
+
+```json
+{ "type": "task_id", "task_id": "research_20250101_xyz" }
+{ "type": "status", "content": "started", "research_id": "research_20250101_xyz" }
+{ "type": "log", "content": "Decomposing topic into 5 subtopics..." }
+{ "type": "progress", "stage": "researching", "subtopic": "Self-attention", "percent": 40 }
+{ "type": "result",
+  "report": "# Attention mechanisms in transformer architectures\n\n...",
+  "metadata": { "sources": 12, "duration_seconds": 47 },
+  "research_id": "research_20250101_xyz" }
+```
+
+<Note>
+The `log` messages are captured stdout from the pipeline and may include rich formatting that has been stripped. Use them for debugging or live status display.
+</Note>

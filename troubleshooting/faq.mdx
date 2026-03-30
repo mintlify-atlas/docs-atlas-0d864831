@@ -1,0 +1,269 @@
+---
+title: "FAQ"
+description: "Answers to common questions about installing, configuring, and running DeepTutor."
+---
+
+<AccordionGroup>
+
+  <Accordion title="Backend fails to start">
+    **Checklist**
+
+    - Python version is 3.10 or higher: `python --version`
+    - All Python dependencies are installed: `pip install -r requirements.txt`
+    - Port 8001 is not already in use (see [Port occupied after Ctrl+C](#port-occupied-after-ctrl-c))
+    - `.env` file exists and contains valid values for `LLM_API_KEY`, `LLM_HOST`, `LLM_MODEL`, `EMBEDDING_API_KEY`, `EMBEDDING_HOST`, and `EMBEDDING_MODEL`
+
+    **Solutions**
+
+    - **Change the port**: Add `BACKEND_PORT=9001` (or any free port) to your `.env` file.
+    - **Review the logs**: Error messages printed to the terminal during startup usually identify the exact cause.
+  </Accordion>
+
+  <Accordion title="Port occupied after Ctrl+C">
+    **Problem**
+
+    After pressing Ctrl+C to stop DeepTutor (especially mid-task such as during deep research), restarting shows an "address already in use" error.
+
+    **Cause**
+
+    Ctrl+C sometimes only stops the frontend process. The backend (FastAPI/Uvicorn) may continue running in the background on port 8001.
+
+    **Solution**
+
+    Find and terminate the process that is holding the port, then restart normally.
+
+    <Tabs>
+      <Tab title="macOS / Linux">
+        ```bash
+        # Find the process ID
+        lsof -i :8001
+
+        # Kill it (replace <PID> with the number from the output above)
+        kill -9 <PID>
+        ```
+      </Tab>
+      <Tab title="Windows">
+        ```cmd
+        :: Find the process ID
+        netstat -ano | findstr :8001
+
+        :: Kill it (replace <PID> with the number from the output above)
+        taskkill /PID <PID> /F
+        ```
+      </Tab>
+    </Tabs>
+
+    After the port is free, restart with:
+
+    ```bash
+    python scripts/start_web.py
+    ```
+  </Accordion>
+
+  <Accordion title="npm: command not found">
+    **Problem**
+
+    Running `scripts/start_web.py` prints `npm: command not found` or exits with status 127.
+
+    **Checklist**
+
+    - Check whether npm is installed: `npm --version`
+    - Check whether Node.js is installed: `node --version`
+    - If you are using conda, confirm the environment is activated
+
+    **Solutions**
+
+    <Tabs>
+      <Tab title="conda (recommended)">
+        ```bash
+        conda install -c conda-forge nodejs
+        ```
+      </Tab>
+      <Tab title="Official installer">
+        Download and install Node.js 18 or higher from [nodejs.org](https://nodejs.org/).
+      </Tab>
+      <Tab title="nvm">
+        ```bash
+        nvm install 18
+        nvm use 18
+        ```
+      </Tab>
+    </Tabs>
+
+    **Verify the installation**
+
+    ```bash
+    node --version   # should show v18.x.x or higher
+    npm --version    # should show a version number
+    ```
+
+    <Note>DeepTutor requires Node.js 18 or higher. Earlier versions are not supported.</Note>
+  </Accordion>
+
+  <Accordion title="Long path names on Windows cause installation errors">
+    **Problem**
+
+    On Windows, installation fails with messages such as "The filename or extension is too long" or similar path-length errors.
+
+    **Cause**
+
+    Windows enforces a default path length limit of 260 characters. DeepTutor's nested dependency tree can exceed this limit.
+
+    **Solution**
+
+    Run the following command in an **Administrator Command Prompt** to enable long path support system-wide:
+
+    ```cmd
+    reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f
+    ```
+
+    Restart your terminal after running the command, then retry the installation.
+  </Accordion>
+
+  <Accordion title="Frontend cannot connect to backend">
+    **Checklist**
+
+    - Confirm the backend is running by visiting [http://localhost:8001/docs](http://localhost:8001/docs) in your browser.
+    - Open your browser's developer console and check for network errors.
+
+    **Solution**
+
+    When running the frontend separately (not via `scripts/start_web.py`), you must tell Next.js where the backend is. Create the file `web/.env.local` with the following content:
+
+    ```bash
+    NEXT_PUBLIC_API_BASE=http://localhost:8001
+    ```
+
+    Restart the frontend after saving the file.
+  </Accordion>
+
+  <Accordion title="Docker: frontend cannot connect in cloud deployment">
+    **Problem**
+
+    After deploying to a cloud server, the frontend shows "Failed to fetch" or "NEXT_PUBLIC_API_BASE is not configured".
+
+    **Cause**
+
+    The default API URL resolves to `localhost:8001` inside the user's **browser**, which points to the user's local machine rather than your remote server. The frontend JavaScript is served to the browser and therefore cannot use container-internal hostnames.
+
+    **Solution**
+
+    Set `NEXT_PUBLIC_API_BASE_EXTERNAL` to your server's public URL so the browser knows where to reach the backend:
+
+    ```bash
+    docker run -d --name deeptutor \
+      -p 8001:8001 -p 3782:3782 \
+      -e NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:8001 \
+      --env-file .env \
+      -v $(pwd)/data:/app/data \
+      ghcr.io/hkuds/deeptutor:latest
+    ```
+
+    Alternatively, add the variable to your `.env` file:
+
+    ```bash
+    NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:8001
+    ```
+
+    If you are also using a custom backend port, include it in the URL:
+
+    ```bash
+    # Backend running on port 9001
+    NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:9001
+    ```
+  </Accordion>
+
+  <Accordion title="Docker: how to use custom ports">
+    **Solution**
+
+    You must set both the environment variables **and** the Docker port mappings. The `-p` host:container mapping must match the `BACKEND_PORT` / `FRONTEND_PORT` values.
+
+    ```bash
+    docker run -d --name deeptutor \
+      -p 9001:9001 -p 4000:4000 \
+      -e BACKEND_PORT=9001 \
+      -e FRONTEND_PORT=4000 \
+      -e NEXT_PUBLIC_API_BASE_EXTERNAL=http://localhost:9001 \
+      --env-file .env \
+      -v $(pwd)/data:/app/data \
+      ghcr.io/hkuds/deeptutor:latest
+    ```
+
+    <Warning>
+      If the `-p` mapping and the `*_PORT` environment variable do not match, the process inside the container will listen on a different port than the one exposed to the host, and connections will fail.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="WebSocket connection fails">
+    **Checklist**
+
+    - Confirm the backend is running (visit [http://localhost:8001/docs](http://localhost:8001/docs)).
+    - Check that no firewall rule is blocking WebSocket traffic on port 8001.
+    - If you are behind a reverse proxy, ensure it is configured to upgrade WebSocket connections (see the nginx config in the HTTPS reverse proxy section below).
+
+    **Solution**
+
+    Confirm the WebSocket URL format used by the frontend is correct:
+
+    ```
+    ws://localhost:8001/api/v1/...
+    ```
+
+    Review the backend logs for any connection-related errors. Real-time features such as the Smart Solver and Deep Research rely on WebSocket; HTTP-only proxies will break them.
+  </Accordion>
+
+  <Accordion title="Settings page shows an error with an HTTPS reverse proxy">
+    **Problem**
+
+    When deploying behind an HTTPS reverse proxy (such as nginx), the Settings page shows "Error loading data". Browser DevTools reveals that HTTPS requests are being redirected to HTTP (307 redirect).
+
+    **Cause**
+
+    This was a bug in versions prior to v0.5.0. FastAPI's automatic trailing-slash redirect generated plain HTTP URLs, effectively downgrading the connection from HTTPS.
+
+    **Solution**
+
+    Update to v0.5.0 or later. The fix disables automatic trailing-slash redirects so the original protocol is preserved.
+
+    If you must stay on an older version, or if you want to harden your nginx configuration regardless, use the following nginx config. The key line is `proxy_set_header X-Forwarded-Proto $scheme`, which forwards the original protocol to FastAPI:
+
+    ```nginx
+    # Frontend
+    location / {
+        proxy_pass http://localhost:3782;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Backend API
+    location /api/ {
+        proxy_pass http://localhost:8001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # WebSocket support
+    location /api/v1/ {
+        proxy_pass http://localhost:8001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    ```
+
+    Also set the following in your `.env` file so the frontend sends requests to the correct URL:
+
+    ```bash
+    NEXT_PUBLIC_API_BASE=https://your-domain.com
+    ```
+
+    Reference: [GitHub issue #112](https://github.com/HKUDS/DeepTutor/issues/112)
+  </Accordion>
+
+</AccordionGroup>

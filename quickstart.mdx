@@ -1,80 +1,196 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Quick start"
+description: "Get DeepTutor running locally and run your first query in under 15 minutes."
 ---
 
-## Get started in three steps
+This guide walks you from a fresh checkout to a running DeepTutor instance with a populated knowledge base. Docker is the recommended path — no Python or Node.js setup required.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+<Tabs>
+  <Tab title="Docker (recommended)">
+    - [Docker Desktop](https://docs.docker.com/get-docker/) or Docker Engine 20+
+    - [Docker Compose](https://docs.docker.com/compose/install/) v2+
+    - An API key for an LLM provider (e.g., OpenAI, DeepSeek, Anthropic)
+    - An API key for an embedding provider (can be the same as your LLM provider)
+  </Tab>
+  <Tab title="Manual install">
+    - Python 3.10+
+    - Node.js 18+
+    - npm
+    - An API key for an LLM provider
+    - An API key for an embedding provider
+  </Tab>
+</Tabs>
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+## Step-by-step setup
 
-### Step 2: Deploy your changes
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/HKUDS/DeepTutor.git
+    cd DeepTutor
+    ```
+  </Step>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+  <Step title="Configure environment variables">
+    Copy the example environment file and open it in your editor:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    ```bash
+    cp .env.example .env
+    ```
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    At minimum, fill in the six required fields:
 
-### Step 3: Go live
+    ```bash
+    # LLM settings
+    LLM_BINDING=openai
+    LLM_MODEL=gpt-4o
+    LLM_API_KEY=sk-...
+    LLM_HOST=https://api.openai.com/v1
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    # Embedding settings
+    EMBEDDING_BINDING=openai
+    EMBEDDING_MODEL=text-embedding-3-small
+    EMBEDDING_API_KEY=sk-...
+    EMBEDDING_HOST=https://api.openai.com/v1
+    EMBEDDING_DIMENSION=1536
+    ```
+
+    <Tip>
+      `LLM_BINDING` and `EMBEDDING_BINDING` control the provider. Supported values include `openai`, `azure_openai`, `anthropic`, `deepseek`, `ollama`, and others. See [Configuration](/configuration) for a full list.
+    </Tip>
+
+    <Note>
+      The `EMBEDDING_DIMENSION` must match your model's actual output dimension. For `text-embedding-3-small` use `1536`; for `text-embedding-3-large` use `3072`.
+    </Note>
+  </Step>
+
+  <Step title="Start DeepTutor">
+    <Tabs>
+      <Tab title="Docker Compose (build from source)">
+        ```bash
+        docker compose up
+        ```
+
+        The first build takes roughly 10–15 minutes. Subsequent starts are fast because Docker caches the image layers.
+
+        To run in the background:
+
+        ```bash
+        docker compose up -d
+        ```
+
+        To rebuild after pulling new code:
+
+        ```bash
+        docker compose build --no-cache && docker compose up
+        ```
+      </Tab>
+      <Tab title="Docker (pre-built image)">
+        Pull and run the latest multi-architecture image directly — Docker detects your architecture (AMD64 or ARM64) automatically:
+
+        ```bash
+        docker run -d --name deeptutor \
+          -p 8001:8001 -p 3782:3782 \
+          --env-file .env \
+          -v $(pwd)/data:/app/data \
+          -v $(pwd)/config:/app/config:ro \
+          ghcr.io/hkuds/deeptutor:latest
+        ```
+
+        On Windows PowerShell, replace `$(pwd)` with `${PWD}`.
+      </Tab>
+      <Tab title="Manual install">
+        **1. Create a Python environment:**
+
+        ```bash
+        # conda (recommended)
+        conda create -n deeptutor python=3.10
+        conda activate deeptutor
+
+        # or venv
+        python -m venv venv
+        source venv/bin/activate   # Windows: venv\Scripts\activate
+        ```
+
+        **2. Install all dependencies:**
+
+        ```bash
+        python scripts/install_all.py
+        ```
+
+        **3. Launch frontend and backend together:**
+
+        ```bash
+        python scripts/start_web.py
+        ```
+
+        Stop with `Ctrl+C`.
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Verify the services are running">
+    Once startup is complete, two services are available:
+
+    | Service | URL | Description |
+    |:--------|:----|:------------|
+    | Frontend | http://localhost:3782 | Main web interface |
+    | Backend API docs | http://localhost:8001/docs | Interactive Swagger UI |
+
+    Open http://localhost:3782 in your browser. You should see the DeepTutor dashboard.
+
+    <Warning>
+      If you are accessing DeepTutor from another device on your network (or deploying to a remote server), you must set `NEXT_PUBLIC_API_BASE` in your `.env` file to the backend's reachable address — for example, `http://192.168.1.100:8001`. See [Deployment](/deployment/docker) for details.
+    </Warning>
+  </Step>
+
+  <Step title="Create your first knowledge base">
+    A knowledge base indexes your documents so every module can search them.
+
+    1. Go to **http://localhost:3782/knowledge**.
+    2. Click **New Knowledge Base** and enter a name (e.g., `my-textbook`).
+    3. Upload one or more PDF, TXT, or Markdown files.
+    4. Watch the terminal for indexing progress — the knowledge graph and vector store are built in the background.
+
+    <Tip>
+      Want to try DeepTutor before uploading your own files? Download the demo knowledge bases (research papers or a data science textbook) from [Google Drive](https://drive.google.com/drive/folders/1iWwfZXiTuQKQqUYb5fGDZjLCeTUP6DA6?usp=sharing) and extract them into the `data/` directory. Demo knowledge bases use `text-embedding-3-large` with `EMBEDDING_DIMENSION=3072`.
+    </Tip>
+  </Step>
+
+  <Step title="Run your first query">
+    1. Go to **http://localhost:3782/solver**.
+    2. Select the knowledge base you just created.
+    3. Type a question about your documents and click **Solve**.
+    4. Watch the dual-loop reasoning process unfold in real time and receive a step-by-step answer with citations.
+
+    You are now running DeepTutor.
+  </Step>
+</Steps>
+
+## Common Docker commands
+
+```bash
+docker compose up -d      # Start in background
+docker compose down       # Stop and remove containers
+docker compose logs -f    # Stream logs
+docker compose up --build # Rebuild image and start
+```
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Tune LLM parameters, enable web search, configure TTS, and adjust research presets.
+  </Card>
+  <Card title="Docker deployment" icon="docker" href="/deployment/docker">
+    Cloud deployment, custom ports, HTTPS reverse proxy, and pre-built image tags.
+  </Card>
+  <Card title="Knowledge base" icon="database" href="/features/knowledge-base">
+    Learn how to manage, update, and query your knowledge bases.
+  </Card>
+  <Card title="Smart solver" icon="brain" href="/features/smart-solver">
+    Explore the dual-loop reasoning architecture and available tool integrations.
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

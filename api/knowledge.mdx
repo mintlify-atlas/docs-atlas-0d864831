@@ -1,0 +1,404 @@
+---
+title: "Knowledge"
+description: "REST endpoints for creating and managing knowledge bases, uploading documents, and linking local folders."
+---
+
+The Knowledge module manages the RAG knowledge bases that power all AI features. Each knowledge base stores raw documents, processed content, and a vector index.
+
+<Note>
+File processing runs as a background task. Use the progress endpoint or WebSocket to track initialization status.
+</Note>
+
+## Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/knowledge/health` | Health check |
+| `GET` | `/api/v1/knowledge/list` | List all knowledge bases |
+| `POST` | `/api/v1/knowledge/create` | Create a new knowledge base |
+| `GET` | `/api/v1/knowledge/default` | Get the default knowledge base |
+| `PUT` | `/api/v1/knowledge/default/{kb_name}` | Set the default knowledge base |
+| `GET` | `/api/v1/knowledge/rag-providers` | List available RAG providers |
+| `GET` | `/api/v1/knowledge/configs` | Get all KB configurations |
+| `POST` | `/api/v1/knowledge/configs/sync` | Sync configs from metadata files |
+| `GET` | `/api/v1/knowledge/{kb_name}` | Get knowledge base details |
+| `DELETE` | `/api/v1/knowledge/{kb_name}` | Delete a knowledge base |
+| `GET` | `/api/v1/knowledge/{kb_name}/config` | Get KB-specific config |
+| `PUT` | `/api/v1/knowledge/{kb_name}/config` | Update KB-specific config |
+| `POST` | `/api/v1/knowledge/{kb_name}/upload` | Upload documents to a KB |
+| `GET` | `/api/v1/knowledge/{kb_name}/progress` | Get initialization progress |
+| `POST` | `/api/v1/knowledge/{kb_name}/progress/clear` | Clear a stuck progress state |
+| `WS` | `/api/v1/knowledge/{kb_name}/progress/ws` | Stream progress updates |
+| `POST` | `/api/v1/knowledge/{kb_name}/link-folder` | Link a local folder |
+| `GET` | `/api/v1/knowledge/{kb_name}/linked-folders` | List linked folders |
+| `DELETE` | `/api/v1/knowledge/{kb_name}/linked-folders/{folder_id}` | Unlink a folder |
+| `POST` | `/api/v1/knowledge/{kb_name}/sync-folder/{folder_id}` | Sync files from a linked folder |
+
+---
+
+## `GET /api/v1/knowledge/health`
+
+Returns the health status of the knowledge base manager.
+
+```bash
+curl http://localhost:8001/api/v1/knowledge/health
+```
+
+```json
+{
+  "status": "ok",
+  "config_file": "/path/to/kb_config.json",
+  "config_exists": true,
+  "base_dir": "/path/to/knowledge_bases",
+  "base_dir_exists": true,
+  "knowledge_bases_count": 2
+}
+```
+
+---
+
+## `GET /api/v1/knowledge/list`
+
+List all available knowledge bases with summary statistics.
+
+```bash
+curl http://localhost:8001/api/v1/knowledge/list
+```
+
+```json
+[
+  {
+    "name": "ai_textbook",
+    "is_default": true,
+    "statistics": {
+      "raw_documents": 12,
+      "images": 4,
+      "content_lists": 8,
+      "rag_initialized": true
+    }
+  }
+]
+```
+
+---
+
+## `POST /api/v1/knowledge/create`
+
+Create a new knowledge base and initialize it with uploaded files. Processing runs in the background.
+
+### Request body (multipart/form-data)
+
+<ParamField body="name" type="string" required>
+  Name for the new knowledge base. Must be unique.
+</ParamField>
+
+<ParamField body="files" type="file[]" required>
+  One or more documents to include.
+</ParamField>
+
+<ParamField body="rag_provider" type="string" default="raganything">
+  RAG provider to use for indexing.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Confirmation message.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Name of the created knowledge base.
+</ResponseField>
+
+<ResponseField name="files" type="string[]">
+  List of uploaded file names.
+</ResponseField>
+
+<RequestExample>
+
+```bash cURL
+curl -X POST http://localhost:8001/api/v1/knowledge/create \
+  -F "name=my_kb" \
+  -F "rag_provider=raganything" \
+  -F "files=@chapter1.pdf" \
+  -F "files=@chapter2.pdf"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "message": "Knowledge base 'my_kb' created. Processing 2 files in background.",
+  "name": "my_kb",
+  "files": ["chapter1.pdf", "chapter2.pdf"]
+}
+```
+
+</ResponseExample>
+
+---
+
+## `GET /api/v1/knowledge/default`
+
+Get the name of the default knowledge base.
+
+```bash
+curl http://localhost:8001/api/v1/knowledge/default
+```
+
+```json
+{ "default_kb": "ai_textbook" }
+```
+
+---
+
+## `PUT /api/v1/knowledge/default/{kb_name}`
+
+Set a knowledge base as the default.
+
+<ParamField path="kb_name" type="string" required>
+  Knowledge base name.
+</ParamField>
+
+```bash
+curl -X PUT http://localhost:8001/api/v1/knowledge/default/my_kb
+```
+
+```json
+{ "status": "success", "default_kb": "my_kb" }
+```
+
+---
+
+## `GET /api/v1/knowledge/{kb_name}`
+
+Get detailed information about a specific knowledge base.
+
+<ParamField path="kb_name" type="string" required>
+  Knowledge base name.
+</ParamField>
+
+```bash
+curl http://localhost:8001/api/v1/knowledge/ai_textbook
+```
+
+Returns `404` if the knowledge base is not found.
+
+---
+
+## `DELETE /api/v1/knowledge/{kb_name}`
+
+Permanently delete a knowledge base and all its data.
+
+<ParamField path="kb_name" type="string" required>
+  Knowledge base name.
+</ParamField>
+
+<Warning>
+This action is irreversible. All documents and vector indexes in the knowledge base will be deleted.
+</Warning>
+
+```bash
+curl -X DELETE http://localhost:8001/api/v1/knowledge/my_kb
+```
+
+```json
+{ "message": "Knowledge base 'my_kb' deleted successfully" }
+```
+
+---
+
+## `POST /api/v1/knowledge/{kb_name}/upload`
+
+Upload additional documents to an existing knowledge base. Processing runs in the background.
+
+<ParamField path="kb_name" type="string" required>
+  Knowledge base name.
+</ParamField>
+
+### Request body (multipart/form-data)
+
+<ParamField body="files" type="file[]" required>
+  One or more documents to add.
+</ParamField>
+
+<ParamField body="rag_provider" type="string">
+  Override the RAG provider for this upload. Defaults to the KB's configured provider.
+</ParamField>
+
+<RequestExample>
+
+```bash cURL
+curl -X POST http://localhost:8001/api/v1/knowledge/my_kb/upload \
+  -F "files=@new_chapter.pdf"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "message": "Uploaded 1 files. Processing in background.",
+  "files": ["new_chapter.pdf"]
+}
+```
+
+</ResponseExample>
+
+---
+
+## `GET /api/v1/knowledge/{kb_name}/progress`
+
+Poll the current initialization or upload progress for a knowledge base.
+
+<ParamField path="kb_name" type="string" required>
+  Knowledge base name.
+</ParamField>
+
+```bash
+curl http://localhost:8001/api/v1/knowledge/my_kb/progress
+```
+
+```json
+{
+  "stage": "processing_documents",
+  "message": "Processing 2 files...",
+  "percent": 50,
+  "current": 1,
+  "total": 2,
+  "timestamp": "2025-01-01T12:00:00"
+}
+```
+
+Returns `{ "status": "not_started" }` if initialization has not begun.
+
+---
+
+## `WS /api/v1/knowledge/{kb_name}/progress/ws`
+
+Stream real-time progress updates for knowledge base initialization. Connect after calling the create or upload endpoint.
+
+<ParamField path="kb_name" type="string" required>
+  Knowledge base name.
+</ParamField>
+
+Messages use `type: "progress"` with a `data` object, or `type: "error"`.
+
+```javascript
+const ws = new WebSocket('ws://localhost:8001/api/v1/knowledge/my_kb/progress/ws');
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+  if (msg.type === 'progress') {
+    console.log(msg.data.stage, msg.data.percent + '%');
+  }
+};
+```
+
+The connection closes automatically when the stage reaches `completed` or `error`.
+
+---
+
+## `POST /api/v1/knowledge/{kb_name}/progress/clear`
+
+Clear a stuck progress state. Useful if a previous initialization failed and left stale progress data.
+
+<ParamField path="kb_name" type="string" required>
+  Knowledge base name.
+</ParamField>
+
+```bash
+curl -X POST http://localhost:8001/api/v1/knowledge/my_kb/progress/clear
+```
+
+```json
+{ "status": "success", "message": "Progress cleared for my_kb" }
+```
+
+---
+
+## `GET /api/v1/knowledge/rag-providers`
+
+List available RAG providers.
+
+```bash
+curl http://localhost:8001/api/v1/knowledge/rag-providers
+```
+
+```json
+{ "providers": ["raganything", "lightrag"] }
+```
+
+---
+
+## Folder linking
+
+You can link a local folder (e.g. a folder synced from SharePoint or Google Drive) to a knowledge base. DeepTutor will detect new and modified files in the folder and process them.
+
+### `POST /api/v1/knowledge/{kb_name}/link-folder`
+
+<ParamField path="kb_name" type="string" required>
+  Knowledge base name.
+</ParamField>
+
+<ParamField body="folder_path" type="string" required>
+  Absolute path to the local folder. Supports `~` expansion and relative paths resolved from the server working directory.
+</ParamField>
+
+```bash
+curl -X POST http://localhost:8001/api/v1/knowledge/my_kb/link-folder \
+  -H "Content-Type: application/json" \
+  -d '{ "folder_path": "/Users/name/Documents/lecture_notes" }'
+```
+
+```json
+{
+  "id": "folder_abc123",
+  "path": "/Users/name/Documents/lecture_notes",
+  "added_at": "2025-01-01T12:00:00",
+  "file_count": 5
+}
+```
+
+### `GET /api/v1/knowledge/{kb_name}/linked-folders`
+
+List all folders linked to a knowledge base.
+
+```bash
+curl http://localhost:8001/api/v1/knowledge/my_kb/linked-folders
+```
+
+### `DELETE /api/v1/knowledge/{kb_name}/linked-folders/{folder_id}`
+
+Remove a folder link (does not delete the actual folder or already-processed documents).
+
+<ParamField path="folder_id" type="string" required>
+  Folder link identifier returned by the link-folder endpoint.
+</ParamField>
+
+### `POST /api/v1/knowledge/{kb_name}/sync-folder/{folder_id}`
+
+Scan the linked folder for new or modified files and process them into the knowledge base.
+
+<ParamField path="folder_id" type="string" required>
+  Folder link identifier.
+</ParamField>
+
+```bash
+curl -X POST http://localhost:8001/api/v1/knowledge/my_kb/sync-folder/folder_abc123
+```
+
+```json
+{
+  "message": "Syncing 3 files from linked folder",
+  "folder_path": "/Users/name/Documents/lecture_notes",
+  "new_files": 2,
+  "modified_files": 1,
+  "file_count": 3
+}
+```
+
+If no changes are detected, returns `{ "message": "No new or modified files to sync", "files": [], "file_count": 0 }`.

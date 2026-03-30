@@ -1,0 +1,136 @@
+---
+title: "Smart solver"
+description: "Multi-agent problem solving with dual-loop reasoning, real-time streaming, and precise source citations."
+---
+
+The Smart Solver is DeepTutor's core problem-solving engine. It uses a **dual-loop architecture** to first deeply understand a question through iterative research, then systematically construct a verified, cited answer. The entire reasoning process streams live to your browser.
+
+## Dual-loop architecture
+
+The solver runs two sequential loops. The output of the Analysis Loop becomes the knowledge foundation for the Solve Loop.
+
+<CardGroup cols={2}>
+  <Card title="Analysis Loop" icon="magnifying-glass">
+    **InvestigateAgent** issues multiple tool queries in parallel, collecting evidence and building a knowledge chain. **NoteAgent** compresses each result into a structured summary with citation IDs. The loop continues until the agent determines it has sufficient context.
+  </Card>
+  <Card title="Solve Loop" icon="check-square">
+    **PlanAgent** breaks the problem into blocks. **ManagerAgent** assigns concrete steps to each block. **SolveAgent** executes each step using tools. **CheckAgent** reviews each completed step and requests corrections if needed. Finally, the answer is formatted into Markdown with inline citations.
+  </Card>
+</CardGroup>
+
+### Agent responsibilities
+
+| Agent | Loop | Responsibility |
+|:--|:--|:--|
+| `InvestigateAgent` | Analysis | Issues parallel tool queries; builds `cite_id → raw_result` mapping |
+| `NoteAgent` | Analysis | Processes each result; writes summaries and structured citations |
+| `PlanAgent` | Solve | Decomposes the problem into ordered blocks |
+| `ManagerAgent` | Solve | Assigns step-by-step instructions for each block |
+| `SolveAgent` | Solve | Executes steps with tool calls and writes reasoning |
+| `CheckAgent` | Solve | Validates completed steps; triggers corrections when needed |
+
+## Using the solver
+
+<Steps>
+  <Step title="Open the solver">
+    Navigate to `http://localhost:3782/solver`.
+  </Step>
+  <Step title="Select a knowledge base">
+    Choose the knowledge base that contains your reference material from the dropdown.
+  </Step>
+  <Step title="Enter your question">
+    Type your question in the input field. Questions can range from precise calculations to open-ended conceptual problems.
+  </Step>
+  <Step title="Click Solve">
+    Click **Solve**. The real-time reasoning stream begins immediately — you can watch the Analysis Loop collect evidence and the Solve Loop work through each step.
+  </Step>
+  <Step title="Review the answer">
+    The final answer renders in Markdown with numbered citations. Each citation links back to its source in your knowledge base or the web.
+  </Step>
+</Steps>
+
+## Real-time streaming
+
+The solver communicates over a WebSocket connection so you see progress as it happens — no waiting for a final response. The stream shows:
+
+- Which tool each agent is calling and why
+- Knowledge collected during the Analysis Loop
+- Each solve step as it is written and checked
+- Correction rounds when CheckAgent finds issues
+
+<Note>
+  If the WebSocket connection drops, verify the backend is running and that your `NEXT_PUBLIC_API_BASE` environment variable points to the correct backend URL. The WebSocket URL format is `ws://localhost:8001/api/v1/...`.
+</Note>
+
+## Tool integrations
+
+SolveAgent selects from four tools at each step. The selection is autonomous — the agent decides which tool best serves the current step.
+
+<AccordionGroup>
+  <Accordion title="RAG retrieval">
+    Queries the selected knowledge base using either hybrid (vector + knowledge graph) or naive (vector only) retrieval. Returns ranked document chunks with citation metadata.
+
+    Configured in `config/main.yaml` under `tools.rag_tool`.
+  </Accordion>
+  <Accordion title="Web search">
+    Retrieves live information from the web using your configured search provider (Perplexity, Tavily, Serper, Jina, Exa, or Baidu). Useful for recent developments not covered in your knowledge base.
+
+    Requires `SEARCH_API_KEY` in `.env`. Enabled with `tools.web_search.enabled: true` in `config/main.yaml`.
+  </Accordion>
+  <Accordion title="Code execution">
+    Runs Python code in a sandboxed workspace. Outputs (numbers, plots, data) are written to the `artifacts/` directory inside the session folder and included in the final answer.
+
+    Configured with `tools.run_code.timeout` (default: 10 seconds).
+  </Accordion>
+  <Accordion title="Query Item">
+    Looks up numbered items — definitions, theorems, equations, figures, tables — by their number from your knowledge base's `numbered_items.json`. Provides exact textual content without a full vector search.
+  </Accordion>
+</AccordionGroup>
+
+## Python API
+
+Use `MainSolver` directly from Python for programmatic access or batch workflows.
+
+```python
+import asyncio
+from src.agents.solve import MainSolver
+
+async def main():
+    solver = MainSolver(kb_name="ai_textbook")
+    result = await solver.solve(
+        question="Calculate the linear convolution of x=[1,2,3] and h=[4,5]",
+        mode="auto"
+    )
+    print(result['formatted_solution'])
+
+asyncio.run(main())
+```
+
+### Result fields
+
+| Field | Description |
+|:--|:--|
+| `result['formatted_solution']` | Final answer as a Markdown string |
+| `result['output_md']` | Path to `final_answer.md` on disk |
+| `result['output_json']` | Path to `solve_chain.json` with all steps and tool logs |
+| `result['citations']` | List of citation objects |
+| `result['analysis_iterations']` | Number of Analysis Loop rounds completed |
+| `result['solve_steps']` | Number of Solve Loop steps executed |
+
+## Output files
+
+Every solve session writes to a timestamped directory under `data/user/solve/`:
+
+```
+data/user/solve/solve_YYYYMMDD_HHMMSS/
+├── investigate_memory.json    # Analysis Loop: knowledge chain and collected evidence
+├── solve_chain.json           # Solve Loop: all steps, tool calls, and results
+├── citation_memory.json       # Citation registry with source metadata
+├── final_answer.md            # Final solution in Markdown
+├── performance_report.json    # Token usage and timing statistics
+└── artifacts/                 # Code execution outputs (plots, data files, etc.)
+```
+
+<Tip>
+  The `solve_chain.json` file is useful for debugging — it records exactly which tool was called at each step, the raw response, and whether CheckAgent requested a correction.
+</Tip>

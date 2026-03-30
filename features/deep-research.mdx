@@ -1,0 +1,311 @@
+---
+title: "Deep research"
+description: "Conduct systematic, multi-agent topic exploration with automated planning, parallel research execution, and cited Markdown reports."
+---
+
+Deep research uses the **DR-in-KG** (Deep Research in Knowledge Graph) system — a multi-agent pipeline built around a **Dynamic Topic Queue**. Given a topic, it plans subtopics, researches each one iteratively across RAG, web, and paper sources, then assembles a structured Markdown report with inline citations.
+
+<CardGroup cols={2}>
+  <Card title="Three-phase pipeline" icon="arrow-right-arrow-left">
+    Planning → Researching → Reporting with six specialized agents.
+  </Card>
+  <Card title="Parallel execution" icon="bolt">
+    Research up to 5 subtopics concurrently with thread-safe citation management.
+  </Card>
+  <Card title="Unified citations" icon="bookmark">
+    Every source gets a unique ID (`PLAN-XX` or `CIT-X-XX`) tracked in a central registry.
+  </Card>
+  <Card title="Research presets" icon="sliders">
+    Choose quick, medium, deep, or auto to control scope and depth.
+  </Card>
+</CardGroup>
+
+## How to use
+
+<Steps>
+  <Step title="Open the research page">
+    Navigate to `http://localhost:3782/research`.
+  </Step>
+  <Step title="Enter a topic">
+    Type your research topic in the input field. The `RephraseAgent` may prompt you to refine the topic before proceeding (configurable).
+  </Step>
+  <Step title="Choose a research preset">
+    Select **Quick**, **Medium**, **Deep**, or **Auto** based on how much depth you need. See [presets](#research-presets) for details.
+  </Step>
+  <Step title="Monitor progress">
+    Watch real-time progress across all three phases. In parallel mode, multiple subtopics display concurrent status indicators.
+  </Step>
+  <Step title="View and export the report">
+    The finished report renders with clickable inline citations. Export to Markdown or PDF from the toolbar.
+  </Step>
+</Steps>
+
+## Research presets
+
+Each preset is a named configuration that controls how many subtopics are generated and how many research iterations run per subtopic.
+
+| Preset | Subtopics | Iterations per subtopic | Iteration mode | Minimum report section |
+|--------|-----------|-------------------------|----------------|------------------------|
+| `quick` | 2 | 2 | Fixed | 300 words |
+| `medium` | 5 | 4 | Fixed | 500 words |
+| `deep` | 8 | 7 | Fixed | 800 words |
+| `auto` | up to 8 | up to 6 | Flexible | 500 words |
+
+- **Fixed** mode: the agent always completes all iterations regardless of how much it has found.
+- **Flexible** mode (`auto` only): the agent stops early when it judges the collected knowledge sufficient.
+
+<Tip>
+  Use `quick` for a fast overview or to test a new knowledge base. Use `deep` when you need a thorough literature review. Use `auto` to let the agent decide scope based on topic complexity.
+</Tip>
+
+## Three-phase architecture
+
+### Phase 1 — Planning
+
+The pipeline starts by turning your input into a structured research plan.
+
+**RephraseAgent** optimizes your topic for research with support for multi-turn refinement. The output is a focused topic description (200–400 words) that guides subsequent decomposition.
+
+**DecomposeAgent** breaks the topic into subtopics. It operates in one of two modes:
+
+- **Manual mode**: generates a fixed number of RAG sub-queries, retrieves background context for each, then produces exactly that many subtopics.
+- **Auto mode**: issues a single RAG query and lets the LLM identify the most relevant subtopics up to a configured maximum.
+
+Each subtopic is wrapped in a `TopicBlock` with status `PENDING` and added to the `DynamicTopicQueue`.
+
+### Phase 2 — Researching
+
+The queue drives an iterative research loop. Each `TopicBlock` moves through states: `PENDING → RESEARCHING → COMPLETED` (or `FAILED`).
+
+**ManagerAgent** handles scheduling: it picks the next pending block, marks it as active, and records completion or failure. It also accepts dynamically discovered subtopics added during research.
+
+**ResearchAgent** runs the per-topic loop. Each iteration it:
+1. Checks whether accumulated knowledge is sufficient (`check_sufficiency`).
+2. Plans the next query: selects a tool, writes the query, and optionally flags a newly discovered related topic for the queue.
+3. Calls the selected tool.
+
+**NoteAgent** compresses raw tool output into a concise summary (200–500 words) and creates a `ToolTrace` that carries the pre-assigned `citation_id`.
+
+#### Execution modes
+
+<Tabs>
+  <Tab title="Series">
+    Topics are researched one at a time. Simpler, lower resource usage. Set via:
+
+    ```yaml
+    research:
+      researching:
+        execution_mode: "series"
+    ```
+  </Tab>
+  <Tab title="Parallel">
+    Multiple topics are researched concurrently up to `max_parallel_topics` (default: 5). Uses `asyncio.Semaphore` to cap concurrency and `AsyncCitationManagerWrapper` for thread-safe citation ID generation.
+
+    ```yaml
+    research:
+      researching:
+        execution_mode: "parallel"
+        max_parallel_topics: 5
+    ```
+  </Tab>
+</Tabs>
+
+### Phase 3 — Reporting
+
+**ReportingAgent** builds the final document:
+
+1. **Deduplication** — semantically similar blocks are identified and merged.
+2. **Outline generation** — a three-level heading structure (title → sections → subsections) is produced.
+3. **Report writing** — the LLM writes each section using a citation table that maps `[N]` references to source details.
+4. **Post-processing** — inline `[N]` markers are converted to clickable `[[N]](#ref-N)` anchor links and invalid references are removed.
+5. **References section** — each citation gets an academic-style entry with a collapsible source detail block.
+
+## Tool integrations
+
+The `ResearchAgent` selects tools dynamically based on iteration phase and research gaps.
+
+| Tool | Type | Use case |
+|------|------|----------|
+| `rag_hybrid` | RAG | Comprehensive knowledge retrieval from your knowledge base |
+| `rag_naive` | RAG | Basic vector search against your knowledge base |
+| `query_item` | Entity lookup | Retrieve a specific entity by ID (e.g., `Theorem 3.1`) |
+| `paper_search` | External | Academic paper search (limited to the past 3 years by default) |
+| `web_search` | External | Real-time web results |
+| `run_code` | Code execution | Calculations and data analysis |
+
+Early iterations prioritize RAG tools. Later iterations add paper and web search to fill gaps.
+
+<Note>
+  `web_search` has two switches. Both must be enabled for web search to run:
+  `tools.web_search.enabled` (global) and `research.researching.enable_web_search` (module-level).
+</Note>
+
+## Citation system
+
+Every source gets a unique ID issued by `CitationManager`:
+
+- `PLAN-01`, `PLAN-02`, … — RAG queries run during the planning phase.
+- `CIT-1-01`, `CIT-2-03`, … — tool calls during research. The first number is the block index; the second is a per-block sequence counter.
+
+In the report, inline citations appear as `[[1]](#ref-1)` anchor links that jump to the references section. The citation registry is persisted to `citations.json` so sessions can be resumed.
+
+```json
+{
+  "research_id": "research_20241209_120000",
+  "citations": {
+    "PLAN-01": {
+      "citation_id": "PLAN-01",
+      "tool_type": "rag_hybrid",
+      "query": "attention mechanisms transformer",
+      "summary": "..."
+    },
+    "CIT-1-01": {
+      "citation_id": "CIT-1-01",
+      "tool_type": "paper_search",
+      "papers": []
+    }
+  },
+  "counters": {
+    "plan_counter": 2,
+    "block_counters": { "1": 3, "2": 2 }
+  }
+}
+```
+
+## CLI usage
+
+Run research directly from the terminal without the web UI. All commands must be run from the project root.
+
+```bash
+# Quick mode (~5–10 minutes)
+python src/agents/research/main.py --topic "Deep Learning Basics" --preset quick
+
+# Balanced depth
+python src/agents/research/main.py --topic "Transformer Architecture" --preset medium
+
+# Thorough research
+python src/agents/research/main.py --topic "Graph Neural Networks" --preset deep
+
+# Agent decides scope
+python src/agents/research/main.py --topic "Reinforcement Learning" --preset auto
+```
+
+## Python API
+
+```python
+import asyncio
+from src.agents.research import ResearchPipeline
+from src.core.core import get_llm_config, load_config_with_main
+
+async def main():
+    config = load_config_with_main("main.yaml")
+    llm_config = get_llm_config()
+
+    pipeline = ResearchPipeline(
+        config=config,
+        api_key=llm_config["api_key"],
+        base_url=llm_config["base_url"],
+        kb_name="ai_textbook",           # override knowledge base
+        progress_callback=lambda event: print(f"Progress: {event}")
+    )
+
+    result = await pipeline.run(topic="Attention Mechanisms in Deep Learning")
+    print(f"Report saved to: {result['final_report_path']}")
+
+asyncio.run(main())
+```
+
+## Output files
+
+All research output is written to `data/user/research/`.
+
+```
+data/user/research/
+├── reports/
+│   ├── research_YYYYMMDD_HHMMSS.md          # Final Markdown report
+│   └── research_YYYYMMDD_HHMMSS_metadata.json
+└── cache/
+    └── research_YYYYMMDD_HHMMSS/
+        ├── queue.json                        # DynamicTopicQueue state
+        ├── citations.json                    # Citation registry
+        ├── step1_planning.json               # Planning phase results
+        ├── planning_progress.json
+        ├── researching_progress.json
+        ├── reporting_progress.json
+        ├── outline.json                      # Three-level outline
+        └── token_cost_summary.json           # Token usage statistics
+```
+
+## Configuration reference
+
+Settings live in two files: `config/main.yaml` (pipeline behaviour) and `config/agents.yaml` (LLM parameters).
+
+<AccordionGroup>
+  <Accordion title="Planning phase">
+    ```yaml
+    research:
+      planning:
+        rephrase:
+          enabled: true          # Enable topic rephrasing step
+          max_iterations: 3      # Max refinement rounds with user
+        decompose:
+          enabled: true
+          mode: auto             # "manual" or "auto"
+          initial_subtopics: 5   # Subtopics for manual mode
+          auto_max_subtopics: 8  # Maximum subtopics for auto mode
+    ```
+  </Accordion>
+  <Accordion title="Researching phase">
+    ```yaml
+    research:
+      researching:
+        execution_mode: series     # "series" or "parallel"
+        max_parallel_topics: 1     # Concurrent topics (parallel mode)
+        max_iterations: 5          # Iterations per topic
+        new_topic_min_score: 0.85  # Score threshold for dynamic topics
+        tool_timeout: 60           # Seconds before a tool call times out
+        tool_max_retries: 2
+        paper_search_years_limit: 3
+
+        # Tool switches
+        enable_rag_hybrid: true
+        enable_rag_naive: true
+        enable_paper_search: true
+        enable_web_search: true
+        enable_run_code: true
+    ```
+  </Accordion>
+  <Accordion title="Queue">
+    ```yaml
+    research:
+      queue:
+        max_length: 5   # Maximum topics allowed in the queue at once
+    ```
+  </Accordion>
+  <Accordion title="Reporting phase">
+    ```yaml
+    research:
+      reporting:
+        min_section_length: 800          # Minimum words per section
+        enable_citation_list: true        # Include references section
+        enable_inline_citations: false    # Clickable [N] markers in text
+    ```
+  </Accordion>
+  <Accordion title="RAG source">
+    ```yaml
+    research:
+      rag:
+        kb_name: ai_textbook    # Knowledge base to query
+        default_mode: hybrid    # Primary RAG mode
+        fallback_mode: naive    # Fallback if hybrid fails
+    ```
+  </Accordion>
+  <Accordion title="LLM parameters">
+    ```yaml
+    # config/agents.yaml
+    research:
+      temperature: 0.5
+      max_tokens: 12000
+    ```
+  </Accordion>
+</AccordionGroup>

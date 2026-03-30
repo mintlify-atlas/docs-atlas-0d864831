@@ -1,0 +1,207 @@
+---
+title: "Solve"
+description: "WebSocket endpoint for real-time AI problem solving, plus REST endpoints for session management."
+---
+
+The Solve module runs a multi-agent pipeline that answers questions using knowledge base content. All work is streamed over a WebSocket connection. Sessions persist conversation history across multiple questions.
+
+## WebSocket endpoint
+
+### `WS /api/v1/solve`
+
+Connect to this endpoint to submit a question and stream the solver's progress and final answer.
+
+#### Initial message
+
+Send this JSON object immediately after the connection opens.
+
+<ParamField body="question" type="string" required>
+  The question or problem to solve.
+</ParamField>
+
+<ParamField body="kb_name" type="string" default="ai_textbook">
+  Name of the knowledge base to query.
+</ParamField>
+
+<ParamField body="session_id" type="string">
+  An existing session ID to continue a conversation. Omit to start a new session.
+</ParamField>
+
+#### Streaming messages
+
+The server sends a sequence of typed JSON messages during execution.
+
+<ResponseField name="type" type="string" required>
+  Message type. One of: `session`, `task_id`, `status`, `agent_status`, `token_stats`, `progress`, `log`, `result`, `error`.
+</ResponseField>
+
+<ResponseField name="session_id" type="string">
+  Returned in the `session` message. Use this to continue the conversation in a later connection.
+</ResponseField>
+
+<ResponseField name="task_id" type="string">
+  Returned in the `task_id` message. Unique identifier for this run.
+</ResponseField>
+
+<ResponseField name="content" type="string">
+  Returned in `status`, `log`, and `error` messages. Human-readable text.
+</ResponseField>
+
+<ResponseField name="agent" type="string">
+  Returned in `agent_status` messages. Name of the agent that changed state.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Returned in `agent_status` messages. Current state of the agent, e.g. `running`, `done`.
+</ResponseField>
+
+<ResponseField name="all_agents" type="object">
+  Returned in `agent_status` messages. Map of all agent names to their current status.
+</ResponseField>
+
+<ResponseField name="stats" type="object">
+  Returned in `token_stats` messages.
+  <Expandable title="properties">
+    <ResponseField name="model" type="string">LLM model name.</ResponseField>
+    <ResponseField name="calls" type="number">Total LLM calls made.</ResponseField>
+    <ResponseField name="cost" type="number">Estimated cost in USD.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="final_answer" type="string">
+  Returned in the `result` message. The full Markdown answer from the solver. Image references use `/api/outputs/` URLs.
+</ResponseField>
+
+<ResponseField name="output_dir" type="string">
+  Returned in the `result` message. Absolute path to the output directory on the server.
+</ResponseField>
+
+<ResponseField name="output_dir_name" type="string">
+  Returned in the `result` message. The name component of the output directory (e.g. `solve_20250101_120000`).
+</ResponseField>
+
+<ResponseField name="metadata" type="object">
+  Returned in the `result` message. Additional metadata from the solver run.
+</ResponseField>
+
+#### Example
+
+```javascript
+const ws = new WebSocket('ws://localhost:8001/api/v1/solve');
+
+ws.onopen = () => {
+  ws.send(JSON.stringify({
+    question: "Explain the backpropagation algorithm.",
+    kb_name: "ai_textbook"
+  }));
+};
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+
+  if (msg.type === 'session') {
+    console.log('Session ID:', msg.session_id);
+  } else if (msg.type === 'result') {
+    console.log('Answer:', msg.final_answer);
+  } else if (msg.type === 'error') {
+    console.error('Error:', msg.content);
+  }
+};
+```
+
+Example streaming messages received during a run:
+
+```json
+{ "type": "session", "session_id": "sess_abc123" }
+{ "type": "task_id", "task_id": "solve_20250101_120000_xyz" }
+{ "type": "status", "content": "started" }
+{ "type": "agent_status", "agent": "planner", "status": "running", "all_agents": { "planner": "running" } }
+{ "type": "token_stats", "stats": { "model": "gpt-4o", "calls": 3, "cost": 0.012 } }
+{ "type": "result",
+  "session_id": "sess_abc123",
+  "final_answer": "# Backpropagation\n\nBackpropagation is...",
+  "output_dir": "/path/to/data/user/solve/solve_xyz",
+  "output_dir_name": "solve_xyz",
+  "metadata": {} }
+```
+
+---
+
+## Session management endpoints
+
+### `GET /api/v1/solve/sessions`
+
+List recent solver sessions.
+
+#### Query parameters
+
+<ParamField query="limit" type="number" default="20">
+  Maximum number of sessions to return.
+</ParamField>
+
+#### Response
+
+```json
+[
+  {
+    "session_id": "sess_abc123",
+    "title": "Explain the backpropagation algorithm...",
+    "kb_name": "ai_textbook",
+    "created_at": "2025-01-01T12:00:00Z"
+  }
+]
+```
+
+---
+
+### `GET /api/v1/solve/sessions/{session_id}`
+
+Get a specific session with its full message history.
+
+#### Path parameters
+
+<ParamField path="session_id" type="string" required>
+  Session identifier.
+</ParamField>
+
+#### Response
+
+```json
+{
+  "session_id": "sess_abc123",
+  "title": "Explain the backpropagation algorithm...",
+  "kb_name": "ai_textbook",
+  "created_at": "2025-01-01T12:00:00Z",
+  "messages": [
+    { "role": "user", "content": "Explain the backpropagation algorithm." },
+    { "role": "assistant", "content": "# Backpropagation\n\n..." }
+  ],
+  "token_stats": { "model": "gpt-4o", "calls": 3, "cost": 0.012 }
+}
+```
+
+Returns `404` if the session is not found.
+
+---
+
+### `DELETE /api/v1/solve/sessions/{session_id}`
+
+Delete a solver session.
+
+#### Path parameters
+
+<ParamField path="session_id" type="string" required>
+  Session identifier.
+</ParamField>
+
+#### Response
+
+```json
+{ "status": "deleted", "session_id": "sess_abc123" }
+```
+
+Returns `404` if the session is not found.
+
+```bash
+curl -X DELETE http://localhost:8001/api/v1/solve/sessions/sess_abc123
+```

@@ -1,0 +1,196 @@
+---
+title: "Question generator"
+description: "Generate practice questions from your knowledge base or clone the style of a reference exam paper."
+---
+
+The Question Generator creates targeted practice questions in two modes. **Custom mode** grounds questions in your knowledge base. **Mimic mode** uploads a reference exam and produces new questions that match its style, format, and difficulty.
+
+All questions go through a single-pass relevance analysis before being saved — no rejection loops, just a relevance classification (`high` or `partial`) to help you understand how well each question is anchored to your material.
+
+## Modes
+
+<Tabs>
+  <Tab title="Custom mode">
+    Custom mode retrieves background knowledge from your knowledge base, plans a set of question focuses, then generates and analyses each question in parallel.
+
+    ### Workflow
+
+    ```
+    User requirement
+        ↓
+    RetrieveAgent    — generates RAG queries, retrieves background knowledge
+        ↓
+    Plan generation  — creates one focus per question (topic, difficulty, type)
+        ↓
+    GenerateAgent    — generates each question from knowledge + focus
+        ↓
+    RelevanceAnalyzer — classifies each question as high or partial relevance
+        ↓
+    Save results
+    ```
+
+    ### How to use
+
+    <Steps>
+      <Step title="Open the question generator">
+        Navigate to `http://localhost:3782/question`.
+      </Step>
+      <Step title="Fill in the requirements">
+        Enter a topic or knowledge point, select a difficulty level, choose a question type, and set the number of questions to generate.
+      </Step>
+      <Step title="Click Generate Questions">
+        Click **Generate Questions**. Progress updates stream live as each question is generated and analysed.
+      </Step>
+      <Step title="Review the results">
+        Each question displays alongside its relevance classification and a KB coverage explanation. Questions marked `partial` include extension notes describing how they go beyond the source material.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Mimic mode">
+    Mimic mode parses a reference exam PDF, extracts its questions, and generates new questions that follow the same structure and style — useful for creating realistic practice materials that mirror an actual test.
+
+    ### Workflow
+
+    ```
+    PDF upload
+        ↓
+    MinerU parser    — extracts text and structure from the PDF
+        ↓
+    QuestionExtractor — identifies and isolates individual reference questions
+        ↓
+    For each reference question (parallel):
+        RetrieveAgent + GenerateAgent (with reference) + RelevanceAnalyzer
+        ↓
+    Save to timestamped folder
+    ```
+
+    ### How to use
+
+    <Steps>
+      <Step title="Open the question generator">
+        Navigate to `http://localhost:3782/question`.
+      </Step>
+      <Step title="Switch to the Mimic Exam tab">
+        Click the **Mimic Exam** tab at the top of the page.
+      </Step>
+      <Step title="Upload a reference exam PDF">
+        Upload your reference exam. You can also provide the path to a directory that was already parsed by MinerU in a previous run.
+      </Step>
+      <Step title="Wait for parsing and generation">
+        The pipeline runs in three stages: PDF parsing → question extraction → question generation. Progress is shown for each stage.
+      </Step>
+      <Step title="Review generated questions">
+        Generated questions appear alongside the original reference questions so you can compare style and difficulty.
+      </Step>
+    </Steps>
+
+    <Note>
+      MinerU PDF parsing requires system dependencies. If parsing fails, check the terminal for errors and consult the installation guide.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Supported question types
+
+| Type | Description |
+|:--|:--|
+| Multiple choice | Four-option questions with a single correct answer and explanation |
+| Fill-in-the-blank | Short answer questions targeting a specific term or value |
+| Calculation | Step-by-step numerical problems |
+| Written response | Open-ended conceptual or analytical questions |
+
+The question type is specified as part of your requirement. In Mimic mode, the type is inferred from the reference question.
+
+## Relevance analysis
+
+Every generated question is analysed by `RelevanceAnalyzer` after generation. This is a single-pass analysis — questions are never rejected.
+
+| Relevance level | Meaning |
+|:--|:--|
+| `high` | The question is fully grounded in your knowledge base content |
+| `partial` | The question extends beyond the knowledge base; `extension_points` explains how |
+
+```json
+{
+  "decision": "approve",
+  "relevance": "high",
+  "kb_coverage": "This question tests the definition of gradient descent covered in chapter 3.",
+  "extension_points": ""
+}
+```
+
+## Python API
+
+### Custom mode
+
+```python
+import asyncio
+from src.agents.question import AgentCoordinator
+
+async def main():
+    coordinator = AgentCoordinator(
+        kb_name="ai_textbook",
+        output_dir="data/user/question"
+    )
+
+    # Generate multiple questions from text requirement
+    result = await coordinator.generate_questions_custom(
+        requirement_text="Generate 3 medium-difficulty questions about deep learning basics",
+        difficulty="medium",
+        question_type="choice",
+        count=3
+    )
+
+    print(f"Generated {result['completed']}/{result['requested']} questions")
+    for q in result['results']:
+        print(f"- Relevance: {q['validation']['relevance']}")
+
+asyncio.run(main())
+```
+
+### Mimic mode
+
+```python
+from src.agents.question.tools.exam_mimic import mimic_exam_questions
+
+result = await mimic_exam_questions(
+    pdf_path="exams/midterm.pdf",
+    kb_name="calculus",
+    output_dir="data/user/question/mimic_papers",
+    max_questions=5
+)
+
+print(f"Generated {result['successful_generations']} questions")
+print(f"Output: {result['output_file']}")
+```
+
+## Output files
+
+<AccordionGroup>
+  <Accordion title="Custom mode output">
+    Each batch run creates a timestamped directory:
+
+    ```
+    data/user/question/batch_YYYYMMDD_HHMMSS/
+    ├── knowledge.json       # RAG queries issued and retrieval results
+    ├── plan.json            # Question focuses (one per question)
+    ├── q_1/
+    │   ├── result.json      # Question content + relevance analysis
+    │   └── question.md      # Human-readable Markdown version
+    ├── q_2/
+    │   ├── result.json
+    │   └── question.md
+    └── summary.json         # Aggregate stats: requested, completed, failed
+    ```
+  </Accordion>
+  <Accordion title="Mimic mode output">
+    Each mimic run saves to a folder named after the source PDF:
+
+    ```
+    data/user/question/mimic_papers/{paper_name}/
+    ├── auto/{paper_name}.md                              # MinerU parsed Markdown
+    ├── {paper_name}_YYYYMMDD_HHMMSS_questions.json       # Extracted reference questions
+    └── {paper_name}_YYYYMMDD_HHMMSS_generated.json       # Generated questions
+    ```
+  </Accordion>
+</AccordionGroup>

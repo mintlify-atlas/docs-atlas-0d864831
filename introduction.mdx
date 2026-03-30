@@ -1,0 +1,133 @@
+---
+title: "Introduction"
+description: "DeepTutor is an open-source AI-powered learning assistant that turns your documents into an intelligent, multi-agent tutor."
+---
+
+DeepTutor transforms static documents — textbooks, research papers, technical manuals — into an interactive learning environment. Upload your files, build a knowledge base, and immediately start solving problems, generating practice exams, conducting literature reviews, and creating visual explanations. Every answer is grounded in your own materials through Retrieval-Augmented Generation (RAG) and a persistent knowledge graph.
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Get DeepTutor running in minutes with Docker or manual install.
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Set up your LLM provider, embeddings, search tools, and more.
+  </Card>
+  <Card title="Smart solver" icon="brain" href="/features/smart-solver">
+    Step-by-step answers with citations from a dual-loop agent system.
+  </Card>
+  <Card title="Deep research" icon="magnifying-glass" href="/features/deep-research">
+    Systematic topic exploration with RAG, web search, and paper databases.
+  </Card>
+</CardGroup>
+
+## Core learning modules
+
+DeepTutor is organized around eight modules, each targeting a different part of the learning workflow.
+
+### Smart solver
+
+The smart solver answers questions using a **dual-loop reasoning architecture**: an Analysis Loop that investigates your question with RAG and web search, followed by a Solve Loop that plans, executes, checks, and formats a step-by-step solution. Every claim is traceable to a source in your knowledge base.
+
+Supports multi-agent collaboration (InvestigateAgent, PlanAgent, ManagerAgent, SolveAgent, CheckAgent), real-time streaming over WebSocket, and code execution for quantitative problems.
+
+### Question generator
+
+Generate targeted practice questions from your knowledge base in two modes:
+
+- **Custom mode** — specify topic, difficulty, question type, and count. The agent retrieves background knowledge, plans a question set, and validates each result for relevance.
+- **Mimic mode** — upload a reference exam PDF. DeepTutor parses the exam, extracts the question style, and generates new questions that match the original format and difficulty.
+
+### Guided learning
+
+Guided learning builds a personalized learning path from your notebook records. A `LocateAgent` identifies 3–5 progressive knowledge points, an `InteractiveAgent` converts each into a visual HTML page, and a `ChatAgent` answers follow-up questions with full context awareness. A summary is generated at the end of each session.
+
+### Deep research
+
+The **DR-in-KG** (Deep Research in Knowledge Graph) system conducts systematic research in three phases:
+
+1. **Planning** — rephrases and decomposes your topic into subtopics using RAG context.
+2. **Researching** — a dynamic topic queue drives parallel or series research across RAG, web search, and academic paper databases.
+3. **Reporting** — deduplicates sources, generates a three-level structured outline, and writes a full report with inline citations.
+
+Four presets control depth: `quick`, `medium`, `deep`, and `auto`.
+
+### Idea generation
+
+The automated IdeaGen module extracts knowledge points from your notebook records, then runs a multi-stage pipeline — loose filter → idea exploration → strict filter — to surface novel research directions. Output is a structured Markdown document organized by knowledge point.
+
+### Co-writer (interactive IdeaGen)
+
+An AI-assisted Markdown editor with three editing operations: **Rewrite**, **Shorten**, and **Expand**. Each operation can optionally draw on RAG context or live web search. An auto-annotation feature marks key content, and a `NarratorAgent` can generate a podcast-style audio narration of your document using TTS.
+
+### Knowledge base
+
+The knowledge base is the foundation of everything in DeepTutor. Upload PDF, TXT, or Markdown files through the web UI or CLI. Each knowledge base is indexed with a hybrid vector store and knowledge graph (powered by LightRAG), enabling both semantic search and entity-relation traversal. Multiple knowledge bases can exist side by side and be selected per session.
+
+### Notebook
+
+The notebook aggregates saved outputs from all other modules into a persistent, searchable record. Results from the solver, question generator, research reports, and co-writer sessions can all be added to a notebook. The guided learning and idea generation modules read directly from notebook records as input.
+
+## System architecture
+
+DeepTutor is a full-stack application with four layers.
+
+### User interface layer
+
+A **Next.js 16 / React 19** frontend communicates with the backend over HTTP REST and WebSocket. WebSocket connections carry real-time streaming output from long-running agent tasks.
+
+### Intelligent agent layer
+
+Each learning module is implemented as a multi-agent pipeline. Agents are specialized — planning, researching, solving, checking, formatting — and collaborate through shared memory and citation managers. LLM parameters for every module are configured centrally in `config/agents.yaml`.
+
+### Tool integration layer
+
+Agents choose from a shared set of tools at runtime:
+
+- **RAG** (naive and hybrid retrieval from the knowledge base)
+- **Web search** (Perplexity, Tavily, Serper, Jina, Exa, or Baidu)
+- **Academic paper search**
+- **Python code execution** (sandboxed to `data/user/run_code_workspace`)
+- **Query item** (entity lookup from the knowledge graph)
+- **PDF parsing** (via MinerU / Docling)
+
+### Knowledge and memory foundation
+
+- **Knowledge graph** — LightRAG-powered entity-relation mapping for semantic discovery across documents.
+- **Vector store** — embedding-based semantic search for accurate content retrieval.
+- **Memory system** — session state, citation tracking, and intermediate result persistence written to the `data/` directory.
+
+## Data storage
+
+All user content is written to the `data/` directory at the project root:
+
+```
+data/
+├── knowledge_bases/        # Vector stores and knowledge graphs
+└── user/
+    ├── solve/              # Solver results and artifacts
+    ├── question/           # Generated question sets
+    ├── research/           # Research reports and cache
+    ├── co-writer/          # Co-writer documents and audio
+    ├── notebook/           # Notebook records
+    ├── guide/              # Guided learning sessions
+    ├── logs/               # System logs
+    └── run_code_workspace/ # Code execution sandbox
+```
+
+Directories are created automatically when first needed. You can mount `data/` as a Docker volume to persist content across container restarts.
+
+## Supported providers
+
+DeepTutor is provider-agnostic. Any OpenAI-compatible API endpoint works for LLM and embedding services.
+
+**LLM providers** — `openai`, `azure_openai`, `anthropic`, `deepseek`, `openrouter`, `groq`, `together`, `mistral`, `ollama`, `lm_studio`, `vllm`, `llama_cpp`
+
+**Embedding providers** — `openai`, `azure_openai`, `jina`, `cohere`, `huggingface`, `google`, `ollama`, `lm_studio`
+
+**Search providers** — `perplexity`, `tavily`, `serper`, `jina`, `exa`
+
+**TTS providers** — `openai`, `azure_openai`
+
+<Note>
+  Web search and TTS are optional features. DeepTutor works fully offline against your knowledge base without them.
+</Note>

@@ -1,0 +1,117 @@
+---
+title: "Environment variables"
+description: "Reference for all environment variables used by DeepTutor. Copy .env.example to .env and fill in the values before starting."
+---
+
+Copy the example file and edit it with your configuration:
+
+```bash
+cp .env.example .env
+```
+
+Variables marked **Yes** under Required must be set for DeepTutor to start. Optional variables enable additional features or override defaults.
+
+---
+
+## LLM settings
+
+The primary language model used for all AI operations — chat, problem solving, research, idea generation, and more.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `LLM_BINDING` | Yes | `openai` | Provider binding. Options: `openai`, `azure_openai`, `anthropic`, `deepseek`, `openrouter`, `groq`, `together`, `mistral`, `ollama`, `lm_studio`, `vllm`, `llama_cpp` |
+| `LLM_MODEL` | Yes | — | Model name, e.g. `gpt-4o`, `deepseek-chat`, `claude-3-5-sonnet` |
+| `LLM_API_KEY` | Yes | — | API key for the LLM provider |
+| `LLM_HOST` | Yes | — | API endpoint URL, e.g. `https://api.openai.com/v1` |
+| `LLM_API_VERSION` | No | — | API version string. Required for Azure OpenAI, e.g. `2024-02-15-preview` |
+
+---
+
+## Embedding settings
+
+The embedding model powers the RAG (Retrieval-Augmented Generation) pipeline used by the knowledge base and search features.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `EMBEDDING_BINDING` | Yes | `openai` | Provider binding. Options: `openai`, `azure_openai`, `jina`, `cohere`, `huggingface`, `google`, `ollama`, `lm_studio` |
+| `EMBEDDING_MODEL` | Yes | `text-embedding-3-small` | Embedding model name |
+| `EMBEDDING_API_KEY` | Yes | — | API key for the embedding provider |
+| `EMBEDDING_HOST` | Yes | — | API endpoint URL, e.g. `https://api.openai.com/v1` |
+| `EMBEDDING_DIMENSION` | Yes | `3072` | Vector dimensions. Must match the model's output dimensions |
+| `EMBEDDING_API_VERSION` | No | — | API version string. Required for Azure OpenAI |
+
+<Note>
+  The demo knowledge bases shipped with DeepTutor were built with `text-embedding-3-large` at `dimensions = 3072`. If you use a different model or dimension, create a new knowledge base — you cannot mix embeddings from different models in one index.
+</Note>
+
+---
+
+## Port and access settings
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `BACKEND_PORT` | No | `8001` | Port for the FastAPI backend |
+| `FRONTEND_PORT` | No | `3782` | Port for the Next.js frontend |
+| `NEXT_PUBLIC_API_BASE` | No | — | Frontend API URL. Set this for LAN or remote access, e.g. `http://192.168.1.100:8001` |
+| `NEXT_PUBLIC_API_BASE_EXTERNAL` | No | — | External API URL for cloud or Docker deployments. Takes priority over `NEXT_PUBLIC_API_BASE` |
+| `DISABLE_SSL_VERIFY` | No | `false` | Disable SSL certificate verification. Not recommended for production |
+
+### Choosing the right API base variable
+
+The frontend needs to know the backend's address. The startup scripts resolve it using the following priority order:
+
+1. `NEXT_PUBLIC_API_BASE_EXTERNAL` — use for cloud or Docker deployments where the backend is accessed via a public URL
+2. `NEXT_PUBLIC_API_BASE` — use for LAN or remote access from another device on the same network
+3. Default: `http://localhost:{BACKEND_PORT}` — works only when the browser and backend are on the same machine
+
+<Tip>
+  For a simple home or office setup where you access DeepTutor from another device (e.g. `192.168.1.66:3782`), set:
+
+  ```bash
+  NEXT_PUBLIC_API_BASE=http://192.168.1.66:8001
+  ```
+</Tip>
+
+<Warning>
+  For any cloud deployment (Docker on a remote server, VPS, etc.), you must set `NEXT_PUBLIC_API_BASE_EXTERNAL` to your server's public URL. Without it, the browser will try to contact `localhost:8001`, which will fail.
+</Warning>
+
+---
+
+## Search provider settings
+
+Enable web search for the Deep Research and Smart Solver modules.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `SEARCH_PROVIDER` | No | `perplexity` | Search provider. Options: `perplexity`, `tavily`, `serper`, `jina`, `exa` |
+| `SEARCH_API_KEY` | No | — | API key for the selected search provider |
+
+Each provider requires its own API key. The `SEARCH_API_KEY` value is used for whichever provider `SEARCH_PROVIDER` is set to.
+
+---
+
+## TTS settings
+
+Enable audio narration in the Interactive IdeaGen (Co-Writer) module.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `TTS_BINDING` | No | `openai` | Provider binding. Options: `openai`, `azure_openai` |
+| `TTS_MODEL` | No | `tts-1` | TTS model name |
+| `TTS_API_KEY` | No | — | API key for the TTS provider. Can be the same as `LLM_API_KEY` when using OpenAI |
+| `TTS_URL` | No | — | API endpoint URL, e.g. `https://api.openai.com/v1` |
+| `TTS_VOICE` | No | `alloy` | Voice for audio output. Options: `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer` |
+| `TTS_BINDING_API_VERSION` | No | — | API version string. Required for Azure OpenAI |
+
+---
+
+## HuggingFace / MinerU settings
+
+These variables are optional and relate to the MinerU PDF parser used during knowledge base creation.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `HF_ENDPOINT` | No | — | HuggingFace mirror endpoint, e.g. `https://your-hf-mirror.example.com` |
+| `HF_HOME` | No | — | HuggingFace cache directory. Recommended: `/app/data/hf` with a Docker volume mount to reuse downloaded models |
+| `HF_HUB_OFFLINE` | No | — | Set to `1` to force offline mode. Requires models already present in `HF_HOME` |

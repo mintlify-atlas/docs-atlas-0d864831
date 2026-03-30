@@ -1,0 +1,100 @@
+{
+  "projectType": "saas",
+  "projectName": "DeepTutor",
+  "projectDescription": "An AI-powered personalized learning assistant that combines multi-agent systems, RAG, knowledge graphs, and interactive tools to help users master complex topics through document Q&A, guided learning, practice generation, deep research, and idea synthesis.",
+  "theme": "almond",
+  "primaryColor": "#00B4A6",
+  "lightColor": "#E6FAF8",
+  "darkColor": "#007A72",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "configuration"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/knowledge-base",
+              "features/smart-solver",
+              "features/question-generator",
+              "features/guided-learning",
+              "features/deep-research",
+              "features/idea-generation",
+              "features/co-writer",
+              "features/notebook"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/docker",
+              "deployment/manual-install",
+              "deployment/environment-variables"
+            ]
+          },
+          {
+            "group": "Help & Troubleshooting",
+            "pages": [
+              "troubleshooting/faq",
+              "troubleshooting/common-issues"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview"
+            ]
+          },
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api/solve",
+              "api/research",
+              "api/knowledge",
+              "api/question",
+              "api/notebook",
+              "api/co-writer",
+              "api/guide",
+              "api/ideagen"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-agent problem solving with dual-loop reasoning (Analysis Loop + Solve Loop) and real-time WebSocket streaming",
+    "RAG-powered knowledge base supporting PDF, TXT, and Markdown documents with hybrid and naive retrieval modes",
+    "Intelligent question generation with custom and exam-mimic modes, powered by a ReAct-based agent",
+    "Guided learning with interactive HTML visualizations and context-aware Q&A sessions",
+    "Deep Research system (DR-in-KG) with dynamic topic queue, parallel execution, and academic citation management",
+    "Idea generation via automated multi-stage filtering and interactive Co-Writer with TTS narration",
+    "Personal notebook for organizing and connecting outputs across all learning modules",
+    "Docker and manual deployment options with multi-architecture support (AMD64 + ARM64)"
+  ],
+  "publicApiSurface": [
+    "POST /api/v1/solve — Submit a question for multi-agent solving with WebSocket streaming",
+    "POST /api/v1/research/start — Start a deep research session on a topic",
+    "GET/POST /api/v1/knowledge — List, create, and manage knowledge bases",
+    "POST /api/v1/question/generate — Generate custom or exam-mimic questions",
+    "GET/POST /api/v1/notebook — Manage notebooks and learning records",
+    "POST /api/v1/co_writer/edit — AI-assisted text editing (rewrite, shorten, expand)",
+    "POST /api/v1/guide/start — Start a guided learning session from notebook content",
+    "POST /api/v1/ideagen/generate — Generate research ideas from knowledge points",
+    "GET /api/v1/dashboard — Retrieve activity statistics and system overview",
+    "GET/POST /api/v1/settings — Read and update LLM/embedding configuration"
+  ]
+}

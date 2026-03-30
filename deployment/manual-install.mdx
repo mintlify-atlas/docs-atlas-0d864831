@@ -1,0 +1,146 @@
+---
+title: "Manual installation"
+description: "Install and run DeepTutor directly on your machine without Docker. Suitable for development or environments where Docker is unavailable."
+---
+
+## Prerequisites
+
+- Python 3.10 or later
+- Node.js 18 or later and npm
+
+<Tip>
+  If Node.js is not installed, use the [official installer](https://nodejs.org/), Homebrew (`brew install node`), or conda (`conda install -c conda-forge nodejs`).
+</Tip>
+
+## Step 1: Clone the repository and configure environment
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/HKUDS/DeepTutor.git
+    cd DeepTutor
+    ```
+  </Step>
+  <Step title="Set up environment variables">
+    ```bash
+    cp .env.example .env
+    ```
+
+    Open `.env` and fill in your API keys. The required variables are `LLM_API_KEY`, `LLM_MODEL`, `LLM_HOST`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, and `EMBEDDING_HOST`.
+
+    See [Environment variables](/deployment/environment-variables) for a full reference.
+  </Step>
+</Steps>
+
+## Step 2: Create a Python environment
+
+<Tabs>
+  <Tab title="conda (recommended)">
+    ```bash
+    conda create -n deeptutor python=3.10
+    conda activate deeptutor
+    ```
+  </Tab>
+  <Tab title="venv">
+    ```bash
+    python -m venv venv
+
+    # macOS / Linux
+    source venv/bin/activate
+
+    # Windows
+    venv\Scripts\activate
+    ```
+  </Tab>
+</Tabs>
+
+## Step 3: Install dependencies
+
+<Tabs>
+  <Tab title="One-click install (recommended)">
+    ```bash
+    python scripts/install_all.py
+    ```
+
+    This script installs both the Python backend dependencies and the Node.js frontend dependencies in one step.
+  </Tab>
+  <Tab title="Manual install">
+    Install the backend and frontend dependencies separately:
+
+    ```bash
+    # Python backend
+    pip install -r requirements.txt
+
+    # Node.js frontend
+    npm install --prefix web
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  On Windows, you may encounter errors about long file paths during `npm install`. See the [Windows note](#windows-long-path-names) below.
+</Note>
+
+## Step 4: Launch DeepTutor
+
+```bash
+python scripts/start_web.py
+```
+
+This command starts both the backend (FastAPI) and the frontend (Next.js) together. Once running, open your browser to:
+
+- **Frontend**: http://localhost:3782
+- **API docs**: http://localhost:8001/docs
+
+Press **Ctrl+C** to stop all services.
+
+## Starting services separately
+
+If you need to run the backend and frontend in separate terminals — for example, to view their logs independently — start each one on its own.
+
+**Backend (FastAPI)**
+
+```bash
+# Using the run server script
+python src/api/run_server.py
+
+# Or directly with uvicorn
+uvicorn src.api.main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+**Frontend (Next.js)**
+
+```bash
+cd web && npm run dev -- -p 3782
+```
+
+Before starting the frontend separately, create `web/.env.local` so it knows where the backend is:
+
+```bash
+NEXT_PUBLIC_API_BASE=http://localhost:8001
+```
+
+For remote or LAN access, replace `localhost` with the server's IP address:
+
+```bash
+NEXT_PUBLIC_API_BASE=http://192.168.1.100:8001
+```
+
+### Default ports
+
+| Service | Default port |
+|---------|-------------|
+| Backend (FastAPI) | `8001` |
+| Frontend (Next.js) | `3782` |
+
+To change these defaults, set `BACKEND_PORT` and `FRONTEND_PORT` in your `.env` file before launching.
+
+## Windows: long path names
+
+On Windows, `npm install` can fail with "The filename or extension is too long" due to the default 260-character path limit. Enable long path support by running the following command in an **Administrator Command Prompt**:
+
+```cmd
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f
+```
+
+Restart your terminal after running this command, then retry the installation.

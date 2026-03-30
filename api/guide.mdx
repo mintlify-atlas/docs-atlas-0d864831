@@ -1,0 +1,277 @@
+---
+title: "Guide"
+description: "REST and WebSocket endpoints for guided learning sessions built from notebook records."
+---
+
+The Guide module creates interactive learning sessions from saved notebook records. A session walks through knowledge points one at a time, answers questions via chat, and can generate and fix interactive HTML exercises.
+
+## Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/v1/guide/create_session` | Create a new guided learning session |
+| `POST` | `/api/v1/guide/start` | Start a session (get the first knowledge point) |
+| `POST` | `/api/v1/guide/next` | Advance to the next knowledge point |
+| `POST` | `/api/v1/guide/chat` | Send a chat message within a session |
+| `POST` | `/api/v1/guide/fix_html` | Fix a bug in the generated HTML exercise |
+| `GET` | `/api/v1/guide/session/{session_id}` | Get session state |
+| `GET` | `/api/v1/guide/session/{session_id}/html` | Get the current HTML exercise |
+| `WS` | `/api/v1/guide/ws/{session_id}` | Real-time interaction via WebSocket |
+| `GET` | `/api/v1/guide/health` | Health check |
+
+---
+
+## `POST /api/v1/guide/create_session`
+
+Create a new guided learning session. You can provide either a single notebook ID or a list of records from multiple notebooks.
+
+### Request body
+
+<ParamField body="notebook_id" type="string">
+  ID of a single notebook whose records will be used. Provide either this or `records`.
+</ParamField>
+
+<ParamField body="records" type="object[]">
+  List of record objects for cross-notebook mode. Provide either this or `notebook_id`.
+</ParamField>
+
+### Response
+
+<ResponseField name="session_id" type="string">
+  Identifier for the new session. Required for all subsequent requests.
+</ResponseField>
+
+<ResponseField name="knowledge_points" type="string[]">
+  Ordered list of knowledge points extracted from the notebook records.
+</ResponseField>
+
+<ResponseField name="total_points" type="number">
+  Total number of knowledge points in the session.
+</ResponseField>
+
+<RequestExample>
+
+```bash cURL (single notebook)
+curl -X POST http://localhost:8001/api/v1/guide/create_session \
+  -H "Content-Type: application/json" \
+  -d '{ "notebook_id": "nb_abc123" }'
+```
+
+```bash cURL (cross-notebook)
+curl -X POST http://localhost:8001/api/v1/guide/create_session \
+  -H "Content-Type: application/json" \
+  -d '{
+    "records": [
+      { "id": "rec_1", "title": "Backpropagation", "output": "..." },
+      { "id": "rec_2", "title": "Attention", "output": "..." }
+    ]
+  }'
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "session_id": "guide_xyz789",
+  "knowledge_points": ["Backpropagation", "Gradient descent", "Activation functions"],
+  "total_points": 3
+}
+```
+
+</ResponseExample>
+
+---
+
+## `POST /api/v1/guide/start`
+
+Start a session and retrieve the first knowledge point with its explanation and interactive exercise.
+
+### Request body
+
+<ParamField body="session_id" type="string" required>
+  Session identifier.
+</ParamField>
+
+<RequestExample>
+
+```bash cURL
+curl -X POST http://localhost:8001/api/v1/guide/start \
+  -H "Content-Type: application/json" \
+  -d '{ "session_id": "guide_xyz789" }'
+```
+
+</RequestExample>
+
+---
+
+## `POST /api/v1/guide/next`
+
+Advance to the next knowledge point in the session.
+
+### Request body
+
+<ParamField body="session_id" type="string" required>
+  Session identifier.
+</ParamField>
+
+<ResponseField name="learning_complete" type="boolean">
+  `true` when all knowledge points have been covered.
+</ResponseField>
+
+```bash
+curl -X POST http://localhost:8001/api/v1/guide/next \
+  -H "Content-Type: application/json" \
+  -d '{ "session_id": "guide_xyz789" }'
+```
+
+---
+
+## `POST /api/v1/guide/chat`
+
+Send a question or message within an active session. The guide agent answers in the context of the current knowledge point.
+
+### Request body
+
+<ParamField body="session_id" type="string" required>
+  Session identifier.
+</ParamField>
+
+<ParamField body="message" type="string" required>
+  The user's message or question.
+</ParamField>
+
+<RequestExample>
+
+```bash cURL
+curl -X POST http://localhost:8001/api/v1/guide/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "guide_xyz789",
+    "message": "Can you give me an example of backpropagation on a simple network?"
+  }'
+```
+
+</RequestExample>
+
+---
+
+## `POST /api/v1/guide/fix_html`
+
+Fix a bug in the interactive HTML exercise generated for the current knowledge point.
+
+### Request body
+
+<ParamField body="session_id" type="string" required>
+  Session identifier.
+</ParamField>
+
+<ParamField body="bug_description" type="string" required>
+  Description of the issue to fix.
+</ParamField>
+
+```bash
+curl -X POST http://localhost:8001/api/v1/guide/fix_html \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "guide_xyz789",
+    "bug_description": "The submit button does not respond when clicked."
+  }'
+```
+
+---
+
+## `GET /api/v1/guide/session/{session_id}`
+
+Get the current state of a session, including progress and active knowledge point.
+
+<ParamField path="session_id" type="string" required>
+  Session identifier.
+</ParamField>
+
+```bash
+curl http://localhost:8001/api/v1/guide/session/guide_xyz789
+```
+
+Returns `404` if the session is not found.
+
+---
+
+## `GET /api/v1/guide/session/{session_id}/html`
+
+Get the HTML content for the current knowledge point's interactive exercise.
+
+<ParamField path="session_id" type="string" required>
+  Session identifier.
+</ParamField>
+
+```bash
+curl http://localhost:8001/api/v1/guide/session/guide_xyz789/html
+```
+
+```json
+{ "html": "<!DOCTYPE html><html>...</html>" }
+```
+
+Returns `404` if the session is not found or no HTML has been generated yet.
+
+---
+
+## `WS /api/v1/guide/ws/{session_id}`
+
+WebSocket endpoint for real-time guided learning interaction. Use this instead of the individual REST endpoints when you need lower latency or a persistent connection.
+
+<ParamField path="session_id" type="string" required>
+  An existing session ID created via `POST /create_session`.
+</ParamField>
+
+### Client messages
+
+Send JSON objects with a `type` field:
+
+| `type` | Additional fields | Description |
+|---|---|---|
+| `start` | — | Start learning (get first knowledge point) |
+| `next` | — | Advance to the next knowledge point |
+| `chat` | `message: string` | Send a chat message |
+| `fix_html` | `bug_description: string` | Request an HTML fix |
+| `get_session` | — | Retrieve the current session state |
+
+### Server messages
+
+| `type` | Payload | Description |
+|---|---|---|
+| `task_id` | `task_id: string` | Sent on connection |
+| `session_info` | `data: object` | Session state, sent on connection and in response to `get_session` |
+| `start_result` | `data: object` | Response to `start` |
+| `next_result` | `data: object` | Response to `next` |
+| `chat_result` | `data: object` | Response to `chat` |
+| `fix_result` | `data: object` | Response to `fix_html` |
+| `error` | `content: string` | Error message |
+
+### Example
+
+```javascript
+const ws = new WebSocket('ws://localhost:8001/api/v1/guide/ws/guide_xyz789');
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+
+  if (msg.type === 'session_info') {
+    console.log('Session loaded:', msg.data);
+
+    // Start the session
+    ws.send(JSON.stringify({ type: 'start' }));
+  } else if (msg.type === 'start_result') {
+    console.log('First knowledge point:', msg.data);
+  } else if (msg.type === 'chat_result') {
+    console.log('Guide answer:', msg.data);
+  }
+};
+
+// Ask a question mid-session
+function ask(question) {
+  ws.send(JSON.stringify({ type: 'chat', message: question }));
+}
+```

@@ -1,0 +1,260 @@
+---
+title: "Co-writer"
+description: "AI-powered Markdown editor with rewrite, shorten, expand, auto-annotation, and text-to-speech narration backed by RAG and web search."
+---
+
+Co-writer is an intelligent Markdown editor that lets you draft, refine, and narrate documents with AI assistance. Two agents handle editing and narration: **EditAgent** applies targeted text transformations with optional knowledge-base or web context, and **NarratorAgent** converts your document into a narrated audio file.
+
+<CardGroup cols={2}>
+  <Card title="AI editing actions" icon="pencil">
+    Rewrite, shorten, expand, or auto-annotate any selected text.
+  </Card>
+  <Card title="Context enhancement" icon="database">
+    Optionally ground edits in your knowledge base (RAG) or live web results.
+  </Card>
+  <Card title="Audio narration" icon="volume">
+    Generate a narration script and MP3 audio with a choice of six voices.
+  </Card>
+  <Card title="Multi-format export" icon="download">
+    Export your document as Markdown or PDF.
+  </Card>
+</CardGroup>
+
+## How to use
+
+<Steps>
+  <Step title="Open the co-writer">
+    Navigate to `http://localhost:3782/co_writer`.
+  </Step>
+  <Step title="Enter or paste text">
+    Type directly in the Markdown editor or paste existing content. The editor renders a live preview.
+  </Step>
+  <Step title="Select text and apply an AI action">
+    Highlight the text you want to modify, then choose **Rewrite**, **Shorten**, **Expand**, or **Auto Mark** from the toolbar.
+  </Step>
+  <Step title="Optionally set a context source">
+    For Rewrite and Expand, you can select **RAG** (your knowledge base) or **Web** to pull in supporting context before the edit is applied.
+  </Step>
+  <Step title="Narrate the document">
+    Click **Narrate**, choose a voice and language, and wait for the MP3 to generate. The audio URL appears in the panel when complete.
+  </Step>
+  <Step title="Export">
+    Use the export toolbar to download the document as Markdown or PDF.
+  </Step>
+</Steps>
+
+## EditAgent
+
+`EditAgent` accepts a text selection, an action type, an optional instruction, and an optional context source. It returns the edited text and a unique `operation_id` that links to the tool-call log for that edit.
+
+### Actions
+
+<AccordionGroup>
+  <Accordion title="Rewrite">
+    Rewrites the selected text according to a custom instruction. You can specify tone, style, audience, or any other transformation.
+
+    Optionally set `source` to `"rag"` to retrieve supporting context from your knowledge base before rewriting, or `"web"` to pull in current web results.
+
+    ```python
+    result = await edit_agent.process(
+        text="The gradient descent algorithm iterates...",
+        instruction="Make it more accessible to undergraduate students",
+        action="rewrite",
+        source="rag",
+        kb_name="ai_textbook"
+    )
+    print(result["edited_text"])
+    ```
+  </Accordion>
+  <Accordion title="Shorten">
+    Compresses the selected text while preserving key information. Useful for cutting verbose paragraphs or producing summaries.
+
+    ```python
+    result = await edit_agent.process(
+        text="Long paragraph...",
+        instruction="Summarize to 50 words",
+        action="shorten"
+    )
+    ```
+  </Accordion>
+  <Accordion title="Expand">
+    Adds details, examples, and context to the selected text. Pair with `source="rag"` to pull technically accurate expansions from your knowledge base.
+
+    ```python
+    result = await edit_agent.process(
+        text="Transformers use self-attention.",
+        instruction="Add more technical detail about the attention computation",
+        action="expand",
+        source="rag",
+        kb_name="ai_textbook"
+    )
+    ```
+  </Accordion>
+  <Accordion title="Auto Mark">
+    Automatically identifies and annotates key concepts in the text without a custom instruction. Useful for producing a first-pass annotated draft.
+  </Accordion>
+</AccordionGroup>
+
+### Return value
+
+```python
+{
+    "edited_text": str,        # The transformed text
+    "operation_id": str,       # Links to tool-call log
+    "tool_call_file": str      # Path to JSON log (if a context source was used)
+}
+```
+
+## NarratorAgent
+
+`NarratorAgent` converts document content into a natural-language narration script and then generates an MP3 audio file using the DashScope TTS API.
+
+### Voices
+
+The following OpenAI-compatible TTS voices are available:
+
+| Voice | Character |
+|-------|-----------|
+| `alloy` | Neutral and balanced |
+| `echo` | Warm and conversational |
+| `fable` | Expressive and dramatic |
+| `onyx` | Deep and authoritative |
+| `nova` | Friendly and upbeat |
+| `shimmer` | Clear and pleasant |
+
+### Usage
+
+```python
+from src.agents.co_writer.narrator_agent import NarratorAgent
+
+agent = NarratorAgent()
+
+result = await agent.narrate(
+    content="Your document content here...",
+    style="friendly",   # "friendly", "academic", or "concise"
+    voice="nova",       # OpenAI TTS voice name
+    skip_audio=False
+)
+
+print(f"Script: {result['script']}")
+print(f"Has audio: {result['has_audio']}")
+print(f"Audio URL: {result['audio_url']}")
+```
+
+### Return value
+
+```python
+{
+    "script": str,          # Generated narration script
+    "key_points": list,     # Key points extracted from content
+    "style": str,           # Narration style used
+    "original_length": int, # Character count of input
+    "script_length": int,   # Character count of generated script
+    "has_audio": bool,      # Whether audio was generated
+    "audio_url": str,       # URL served via /api/outputs/ (or None)
+    "audio_id": str,        # Audio file identifier (or None)
+    "voice": str,           # Voice used (or None)
+    "audio_error": str      # Error message if audio failed (or None)
+}
+```
+
+<Warning>
+  TTS narration requires a separate TTS API configuration. Set the following in your `.env` file (supports OpenAI-compatible APIs):
+
+  ```bash
+  TTS_BINDING=openai
+  TTS_MODEL=tts-1
+  TTS_API_KEY=sk-your-api-key
+  TTS_URL=https://api.openai.com/v1
+  TTS_VOICE=alloy
+  ```
+
+  If TTS is not configured, calling `/narrate` will return a `400` error. Use `/narrate/script` to generate scripts without audio.
+</Warning>
+
+## Python API — full workflow example
+
+```python
+from src.agents.co_writer.edit_agent import EditAgent
+from src.agents.co_writer.narrator_agent import NarratorAgent
+
+# 1. Edit with RAG context
+edit_agent = EditAgent()
+edited = await edit_agent.process(
+    text="Original content...",
+    instruction="Make it clearer and more detailed",
+    action="expand",
+    source="rag",
+    kb_name="ai_textbook"
+)
+
+# 2. Narrate the edited text
+narrator = NarratorAgent()
+audio = await narrator.narrate(
+    content=edited["edited_text"],
+    style="friendly",
+    voice="nova"
+)
+
+print(f"Edited text: {edited['edited_text']}")
+print(f"Audio URL: {audio['audio_url']}")
+```
+
+## REST API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/co_writer/edit` | Apply an editing action |
+| `POST` | `/api/v1/co_writer/automark` | Auto-annotate key content |
+| `POST` | `/api/v1/co_writer/narrate` | Generate narration and TTS audio |
+
+**Edit request:**
+
+```json
+{
+  "text": "Original text...",
+  "instruction": "Make it more formal",
+  "action": "rewrite",
+  "source": "rag",
+  "kb_name": "ai_textbook"
+}
+```
+
+**Narrate request:**
+
+```json
+{
+  "content": "Text to narrate...",
+  "style": "friendly",
+  "voice": "nova",
+  "skip_audio": false
+}
+```
+
+## Output files
+
+All co-writer output is written to `data/user/co-writer/`.
+
+```
+data/user/co-writer/
+├── audio/
+│   └── {operation_id}.mp3         # Generated TTS audio files
+├── tool_calls/
+│   └── {operation_id}_{tool_type}.json   # RAG/web context call logs
+└── history.json                   # Edit history for all sessions
+```
+
+## TTS configuration
+
+The default TTS voice is configured via the `TTS_VOICE` environment variable (default: `alloy`). You can override this per-request through the API by passing the `voice` parameter.
+
+```bash
+# .env
+TTS_BINDING=openai
+TTS_MODEL=tts-1
+TTS_API_KEY=sk-your-key
+TTS_URL=https://api.openai.com/v1
+TTS_VOICE=nova
+```
+
+Check if TTS is configured by calling `GET /api/v1/co_writer/tts/status`.

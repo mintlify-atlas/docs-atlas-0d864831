@@ -1,0 +1,294 @@
+---
+title: "Notebook"
+description: "REST endpoints for creating notebooks and saving AI-generated learning records."
+---
+
+Notebooks are collections of saved outputs from other DeepTutor modules (solve, question, research, co-writer, chat). The Guide and IdeaGen modules read from notebooks to power learning sessions and research idea generation.
+
+## Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/notebook/health` | Health check |
+| `GET` | `/api/v1/notebook/list` | List all notebooks |
+| `GET` | `/api/v1/notebook/statistics` | Get global statistics |
+| `POST` | `/api/v1/notebook/create` | Create a notebook |
+| `GET` | `/api/v1/notebook/{notebook_id}` | Get notebook details |
+| `PUT` | `/api/v1/notebook/{notebook_id}` | Update a notebook |
+| `DELETE` | `/api/v1/notebook/{notebook_id}` | Delete a notebook |
+| `POST` | `/api/v1/notebook/add_record` | Add a record to notebooks |
+| `DELETE` | `/api/v1/notebook/{notebook_id}/records/{record_id}` | Remove a record |
+
+---
+
+## `GET /api/v1/notebook/list`
+
+List all notebooks with summary information.
+
+```bash
+curl http://localhost:8001/api/v1/notebook/list
+```
+
+<ResponseField name="notebooks" type="object[]">
+  Array of notebook summaries.
+</ResponseField>
+
+<ResponseField name="total" type="number">
+  Total number of notebooks.
+</ResponseField>
+
+```json
+{
+  "notebooks": [
+    {
+      "id": "nb_abc123",
+      "name": "Deep Learning Notes",
+      "description": "Chapter summaries and solved problems",
+      "color": "#3B82F6",
+      "icon": "book",
+      "record_count": 5,
+      "created_at": "2025-01-01T10:00:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+## `GET /api/v1/notebook/statistics`
+
+Get aggregate statistics across all notebooks.
+
+```bash
+curl http://localhost:8001/api/v1/notebook/statistics
+```
+
+---
+
+## `POST /api/v1/notebook/create`
+
+Create a new notebook.
+
+### Request body
+
+<ParamField body="name" type="string" required>
+  Display name for the notebook.
+</ParamField>
+
+<ParamField body="description" type="string" default='""'>
+  Optional description.
+</ParamField>
+
+<ParamField body="color" type="string" default='"#3B82F6"'>
+  Hex color code for the notebook icon.
+</ParamField>
+
+<ParamField body="icon" type="string" default='"book"'>
+  Icon name for the notebook.
+</ParamField>
+
+<RequestExample>
+
+```bash cURL
+curl -X POST http://localhost:8001/api/v1/notebook/create \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Deep Learning Notes",
+    "description": "Chapter summaries and solved problems",
+    "color": "#3B82F6",
+    "icon": "book"
+  }'
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "success": true,
+  "notebook": {
+    "id": "nb_abc123",
+    "name": "Deep Learning Notes",
+    "description": "Chapter summaries and solved problems",
+    "color": "#3B82F6",
+    "icon": "book",
+    "records": [],
+    "created_at": "2025-01-01T10:00:00Z"
+  }
+}
+```
+
+</ResponseExample>
+
+---
+
+## `GET /api/v1/notebook/{notebook_id}`
+
+Get full notebook details including all records.
+
+<ParamField path="notebook_id" type="string" required>
+  Notebook identifier.
+</ParamField>
+
+```bash
+curl http://localhost:8001/api/v1/notebook/nb_abc123
+```
+
+Returns `404` if the notebook is not found.
+
+---
+
+## `PUT /api/v1/notebook/{notebook_id}`
+
+Update notebook metadata. All fields are optional; only supplied fields are updated.
+
+<ParamField path="notebook_id" type="string" required>
+  Notebook identifier.
+</ParamField>
+
+### Request body
+
+<ParamField body="name" type="string">
+  New display name.
+</ParamField>
+
+<ParamField body="description" type="string">
+  New description.
+</ParamField>
+
+<ParamField body="color" type="string">
+  New hex color code.
+</ParamField>
+
+<ParamField body="icon" type="string">
+  New icon name.
+</ParamField>
+
+```bash
+curl -X PUT http://localhost:8001/api/v1/notebook/nb_abc123 \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "Updated Notebook Name" }'
+```
+
+```json
+{
+  "success": true,
+  "notebook": { "id": "nb_abc123", "name": "Updated Notebook Name", ... }
+}
+```
+
+Returns `404` if the notebook is not found.
+
+---
+
+## `DELETE /api/v1/notebook/{notebook_id}`
+
+Delete a notebook and all its records.
+
+<ParamField path="notebook_id" type="string" required>
+  Notebook identifier.
+</ParamField>
+
+```bash
+curl -X DELETE http://localhost:8001/api/v1/notebook/nb_abc123
+```
+
+```json
+{ "success": true, "message": "Notebook deleted successfully" }
+```
+
+---
+
+## `POST /api/v1/notebook/add_record`
+
+Save an AI-generated output to one or more notebooks. This is the primary way to populate notebooks with content for guided learning and idea generation.
+
+### Request body
+
+<ParamField body="notebook_ids" type="string[]" required>
+  List of notebook IDs to add the record to.
+</ParamField>
+
+<ParamField body="record_type" type="string" required>
+  Type of the record. One of: `"solve"`, `"question"`, `"research"`, `"co_writer"`, `"chat"`.
+</ParamField>
+
+<ParamField body="title" type="string" required>
+  Display title for the record.
+</ParamField>
+
+<ParamField body="user_query" type="string" required>
+  The original user question or prompt that produced this output.
+</ParamField>
+
+<ParamField body="output" type="string" required>
+  The AI-generated output content (Markdown).
+</ParamField>
+
+<ParamField body="metadata" type="object" default="{}">
+  Additional metadata to store with the record.
+</ParamField>
+
+<ParamField body="kb_name" type="string">
+  Knowledge base that was used.
+</ParamField>
+
+<RequestExample>
+
+```bash cURL
+curl -X POST http://localhost:8001/api/v1/notebook/add_record \
+  -H "Content-Type: application/json" \
+  -d '{
+    "notebook_ids": ["nb_abc123"],
+    "record_type": "solve",
+    "title": "Backpropagation explanation",
+    "user_query": "Explain the backpropagation algorithm.",
+    "output": "# Backpropagation\n\nBackpropagation is...",
+    "kb_name": "ai_textbook"
+  }'
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "success": true,
+  "record": {
+    "id": "rec_xyz789",
+    "record_type": "solve",
+    "title": "Backpropagation explanation",
+    "created_at": "2025-01-01T12:00:00Z"
+  },
+  "added_to_notebooks": ["nb_abc123"]
+}
+```
+
+</ResponseExample>
+
+---
+
+## `DELETE /api/v1/notebook/{notebook_id}/records/{record_id}`
+
+Remove a record from a notebook. The record itself is not deleted from other notebooks it may belong to.
+
+<ParamField path="notebook_id" type="string" required>
+  Notebook identifier.
+</ParamField>
+
+<ParamField path="record_id" type="string" required>
+  Record identifier.
+</ParamField>
+
+```bash
+curl -X DELETE http://localhost:8001/api/v1/notebook/nb_abc123/records/rec_xyz789
+```
+
+```json
+{ "success": true, "message": "Record removed successfully" }
+```
+
+Returns `404` if the record is not found in the notebook.

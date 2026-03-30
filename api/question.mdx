@@ -1,0 +1,226 @@
+---
+title: "Question"
+description: "WebSocket endpoints for AI-generated exam questions and mimic exam paper generation."
+---
+
+The Question module provides two WebSocket endpoints for generating practice questions:
+
+- **`/generate`** — Generate custom questions based on a knowledge point and type specification.
+- **`/mimic`** — Parse an existing exam paper and generate similar questions.
+
+---
+
+## `WS /api/v1/question/generate`
+
+Generate one or more practice questions from a knowledge base. The coordinator agent iterates to produce high-quality, validated questions.
+
+### Initial message
+
+<ParamField body="requirement" type="object" required>
+  Specification for the question(s) to generate.
+  <Expandable title="properties">
+    <ParamField body="knowledge_point" type="string" required>
+      The topic or concept the question should test.
+    </ParamField>
+    <ParamField body="question_type" type="string" required>
+      Type of question, e.g. `"multiple_choice"`, `"short_answer"`, `"essay"`.
+    </ParamField>
+    <ParamField body="difficulty" type="string">
+      Difficulty level, e.g. `"easy"`, `"medium"`, `"hard"`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="kb_name" type="string" default="ai_textbook">
+  Knowledge base to use for grounding the questions.
+</ParamField>
+
+<ParamField body="count" type="number" default="1">
+  Number of questions to generate.
+</ParamField>
+
+### Streaming messages
+
+<ResponseField name="type" type="string" required>
+  Message type. One of: `task_id`, `status`, `log`, `question`, `token_stats`, `batch_summary`, `complete`, `error`.
+</ResponseField>
+
+<ResponseField name="task_id" type="string">
+  Returned in the `task_id` message.
+</ResponseField>
+
+<ResponseField name="content" type="string">
+  Returned in `status`, `log`, and `error` messages.
+</ResponseField>
+
+<ResponseField name="question" type="object">
+  Returned in `question` messages as each question is produced.
+  <Expandable title="properties">
+    <ResponseField name="question" type="string">Question text.</ResponseField>
+    <ResponseField name="answer" type="string">Correct answer or model answer.</ResponseField>
+    <ResponseField name="explanation" type="string">Explanation of the answer.</ResponseField>
+    <ResponseField name="options" type="string[]">Answer options, for multiple-choice questions.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="validation" type="object">
+  Returned alongside `question` messages. Quality validation result from the agent.
+</ResponseField>
+
+<ResponseField name="stats" type="object">
+  Returned in `token_stats` messages. LLM usage statistics.
+</ResponseField>
+
+<ResponseField name="requested" type="number">
+  Returned in `batch_summary`. Number of questions requested.
+</ResponseField>
+
+<ResponseField name="completed" type="number">
+  Returned in `batch_summary`. Number of questions successfully generated.
+</ResponseField>
+
+<ResponseField name="failed" type="number">
+  Returned in `batch_summary`. Number of failed generation attempts.
+</ResponseField>
+
+### Example
+
+```javascript
+const ws = new WebSocket('ws://localhost:8001/api/v1/question/generate');
+
+ws.onopen = () => {
+  ws.send(JSON.stringify({
+    requirement: {
+      knowledge_point: "Gradient descent",
+      question_type: "multiple_choice",
+      difficulty: "medium"
+    },
+    kb_name: "ai_textbook",
+    count: 3
+  }));
+};
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+  if (msg.type === 'question') {
+    console.log('New question:', msg.question);
+  } else if (msg.type === 'complete') {
+    console.log('Generation finished');
+  }
+};
+```
+
+Example streaming messages:
+
+```json
+{ "type": "task_id", "task_id": "question_gen_xyz" }
+{ "type": "status", "content": "started" }
+{ "type": "question",
+  "question": {
+    "question": "Which of the following describes the update rule in gradient descent?",
+    "options": ["θ = θ + α∇J(θ)", "θ = θ - α∇J(θ)", "θ = θ * α∇J(θ)", "θ = α / ∇J(θ)"],
+    "answer": "θ = θ - α∇J(θ)",
+    "explanation": "Gradient descent subtracts the gradient scaled by the learning rate α."
+  },
+  "validation": { "passed": true }
+}
+{ "type": "batch_summary", "requested": 3, "completed": 3, "failed": 0 }
+{ "type": "complete" }
+```
+
+---
+
+## `WS /api/v1/question/mimic`
+
+Parse an exam paper PDF and generate new questions that mimic its style and content.
+
+### Initial message
+
+The message format depends on the `mode` field.
+
+<ParamField body="mode" type="string" required>
+  Either `"upload"` (send a PDF directly) or `"parsed"` (use a pre-parsed directory).
+</ParamField>
+
+<ParamField body="kb_name" type="string" default="ai_textbook">
+  Knowledge base to use for context.
+</ParamField>
+
+<ParamField body="max_questions" type="number">
+  Maximum number of questions to generate. Defaults to all questions found in the paper.
+</ParamField>
+
+**For `mode: "upload"`:**
+
+<ParamField body="pdf_data" type="string" required>
+  Base64-encoded PDF content.
+</ParamField>
+
+<ParamField body="pdf_name" type="string" default="exam.pdf">
+  Original filename including the `.pdf` extension.
+</ParamField>
+
+**For `mode: "parsed"`:**
+
+<ParamField body="paper_path" type="string" required>
+  Name of the pre-parsed paper directory on the server.
+</ParamField>
+
+### Streaming messages
+
+<ResponseField name="type" type="string" required>
+  Message type. One of: `status`, `log`, `question`, `complete`, `error`.
+</ResponseField>
+
+<ResponseField name="stage" type="string">
+  Returned in `status` messages. Current pipeline stage, e.g. `"init"`, `"upload"`, `"parsing"`, `"processing"`.
+</ResponseField>
+
+<ResponseField name="content" type="string">
+  Returned in `status`, `log`, and `error` messages.
+</ResponseField>
+
+### Example (upload mode)
+
+```javascript
+const ws = new WebSocket('ws://localhost:8001/api/v1/question/mimic');
+
+// Read file and convert to base64
+const reader = new FileReader();
+reader.onload = () => {
+  const base64 = reader.result.split(',')[1];
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({
+      mode: "upload",
+      pdf_data: base64,
+      pdf_name: "midterm_2024.pdf",
+      kb_name: "ai_textbook",
+      max_questions: 10
+    }));
+  };
+};
+reader.readAsDataURL(pdfFile);
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+  if (msg.type === 'complete') {
+    console.log('Mimic generation finished');
+  }
+};
+```
+
+Example streaming messages:
+
+```json
+{ "type": "status", "stage": "init", "content": "Initializing..." }
+{ "type": "status", "stage": "upload", "content": "Saving PDF: midterm_2024.pdf" }
+{ "type": "status", "stage": "parsing", "content": "Parsing PDF exam paper (MinerU)..." }
+{ "type": "status", "stage": "processing", "content": "Executing question generation workflow..." }
+{ "type": "question", ... }
+{ "type": "complete" }
+```
+
+<Note>
+The `mimic` endpoint uses MinerU to parse the PDF. Parsing time depends on the document length. For large exam papers, expect 30–120 seconds before questions start streaming.
+</Note>

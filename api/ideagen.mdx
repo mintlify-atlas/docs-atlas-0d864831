@@ -1,0 +1,167 @@
+---
+title: "IdeaGen"
+description: "WebSocket endpoint for generating research ideas from notebook content."
+---
+
+The IdeaGen module processes notebook records (or a free-text description) through a multi-stage AI pipeline that extracts knowledge points, explores and filters research ideas, and generates a concise research statement for each idea.
+
+## Endpoints
+
+- [`WS /api/v1/ideagen/generate`](#ws-apiv1ideagengenerate) — Generate research ideas via WebSocket.
+- [`GET /api/v1/ideagen/test`](#get-apiv1ideagentest) — Health check.
+
+---
+
+## `WS /api/v1/ideagen/generate`
+
+Run the full idea generation workflow. The server streams typed status messages as each stage completes and delivers individual ideas as they are ready.
+
+### Initial message
+
+<ParamField body="notebook_id" type="string">
+  ID of a notebook to use as source material. Provide either this or `records`.
+</ParamField>
+
+<ParamField body="record_ids" type="string[]">
+  Filter to specific records within `notebook_id`. Omit to use all records.
+</ParamField>
+
+<ParamField body="records" type="object[]">
+  List of record objects for cross-notebook mode. Provide either this or `notebook_id`.
+</ParamField>
+
+<ParamField body="user_thoughts" type="string">
+  Optional free-text description of a research topic. Can be used without any notebook records to generate ideas from scratch.
+</ParamField>
+
+### Streaming messages
+
+All messages share a common base structure. The `type` field distinguishes regular status messages from idea deliveries.
+
+<ResponseField name="type" type="string" required>
+  Either `"status"`, `"idea"`, `"task_id"`, or `"error"`.
+</ResponseField>
+
+**For `type: "task_id"`:**
+
+<ResponseField name="task_id" type="string">
+  Unique identifier for this run.
+</ResponseField>
+
+**For `type: "status"`:**
+
+<ResponseField name="stage" type="string">
+  Current pipeline stage. See the stage table below.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Human-readable description of what is happening.
+</ResponseField>
+
+<ResponseField name="timestamp" type="string">
+  ISO 8601 timestamp.
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Stage-specific data payload. Content varies by stage.
+</ResponseField>
+
+**For `type: "idea"`:**
+
+<ResponseField name="data" type="object">
+  The generated idea.
+  <Expandable title="properties">
+    <ResponseField name="id" type="string">Idea identifier, e.g. `"idea-0"`.</ResponseField>
+    <ResponseField name="knowledge_point" type="string">The knowledge point this idea is derived from.</ResponseField>
+    <ResponseField name="description" type="string">Description of the knowledge point.</ResponseField>
+    <ResponseField name="research_ideas" type="object[]">Filtered candidate research ideas.</ResponseField>
+    <ResponseField name="statement" type="string">The generated research problem statement.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Pipeline stages
+
+The workflow emits a `status` message at each of the following stages:
+
+| Stage | Description |
+|---|---|
+| `init` | Initializing the workflow |
+| `extracting` | Extracting knowledge points from records |
+| `knowledge_extracted` | Extraction complete; `data.knowledge_points` contains the list |
+| `filtering` | Applying loose filter to knowledge points |
+| `filtered` | Filtering complete; `data.filtered_points` contains survivors |
+| `exploring` | Exploring research ideas for a knowledge point |
+| `explored` | Exploration complete for one knowledge point |
+| `strict_filtering` | Strictly filtering candidate ideas |
+| `generating` | Generating the research statement |
+| `idea_ready` | A single idea is ready (followed immediately by a `type: "idea"` message) |
+| `complete` | All ideas generated; `data.ideas` contains the full list |
+| `error` | An error occurred; `data.error` contains the message |
+
+### Example
+
+```javascript
+const ws = new WebSocket('ws://localhost:8001/api/v1/ideagen/generate');
+
+ws.onopen = () => {
+  ws.send(JSON.stringify({
+    notebook_id: "nb_abc123"
+  }));
+};
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+
+  if (msg.type === 'task_id') {
+    console.log('Task:', msg.task_id);
+  } else if (msg.type === 'status') {
+    console.log(`[${msg.stage}] ${msg.message}`);
+  } else if (msg.type === 'idea') {
+    console.log('New idea:', msg.data.statement);
+  }
+};
+```
+
+Example streaming messages for a run with two knowledge points:
+
+```json
+{ "type": "task_id", "task_id": "ideagen_20250101_xyz" }
+{ "type": "status", "stage": "init", "message": "Initializing idea generation workflow...", "timestamp": "2025-01-01T12:00:00" }
+{ "type": "status", "stage": "extracting", "message": "Extracting knowledge points from 5 records...", "data": { "record_count": 5 }, "timestamp": "..." }
+{ "type": "status", "stage": "knowledge_extracted", "message": "Extracted 3 knowledge points", "data": { "knowledge_points": [...], "count": 3 }, "timestamp": "..." }
+{ "type": "status", "stage": "filtering", "message": "Filtering 3 knowledge points (loose criteria)...", "timestamp": "..." }
+{ "type": "status", "stage": "filtered", "message": "Filtered to 2 knowledge points", "data": { "filtered": 2, "original": 3 }, "timestamp": "..." }
+{ "type": "status", "stage": "exploring", "message": "Exploring research ideas for: Attention mechanisms (1/2)", "timestamp": "..." }
+{ "type": "status", "stage": "explored", "message": "Generated 4 research ideas for: Attention mechanisms", "timestamp": "..." }
+{ "type": "status", "stage": "strict_filtering", "message": "Strictly filtering 4 ideas for: Attention mechanisms", "timestamp": "..." }
+{ "type": "status", "stage": "generating", "message": "Generating statement for: Attention mechanisms", "timestamp": "..." }
+{ "type": "status", "stage": "idea_ready", "message": "Research idea ready: Attention mechanisms", "data": { "index": 1, "total": 2 }, "timestamp": "..." }
+{ "type": "idea", "data": {
+    "id": "idea-0",
+    "knowledge_point": "Attention mechanisms",
+    "description": "Mathematical foundations of self-attention in transformers",
+    "research_ideas": [...],
+    "statement": "Investigating efficient attention variants for long-sequence modeling in resource-constrained environments.",
+    "expanded": false
+  }
+}
+{ "type": "status", "stage": "complete", "message": "Successfully generated 2 research ideas", "data": { "ideas": [...], "count": 2 }, "timestamp": "..." }
+```
+
+<Tip>
+You can pass only `user_thoughts` without any notebook records. In this case, IdeaGen treats your description as a single virtual knowledge point and generates ideas from it directly.
+</Tip>
+
+---
+
+## `GET /api/v1/ideagen/test`
+
+Simple health check that confirms the IdeaGen API is running.
+
+```bash
+curl http://localhost:8001/api/v1/ideagen/test
+```
+
+```json
+{ "status": "ok", "message": "IdeaGen API is working" }
+```

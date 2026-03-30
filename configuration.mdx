@@ -1,0 +1,316 @@
+---
+title: "Configuration"
+description: "Reference for all DeepTutor environment variables and YAML configuration options."
+---
+
+DeepTutor uses two configuration layers:
+
+1. **Environment variables** (`.env`) — API keys, model names, provider bindings, and ports. These are the authoritative source for secrets and model selection.
+2. **YAML files** (`config/`) — system behavior, tool settings, agent LLM parameters, and module-specific options. Never put secrets here.
+
+## Environment variables
+
+Copy `.env.example` to `.env` and fill in the values before starting DeepTutor.
+
+```bash
+cp .env.example .env
+```
+
+### Server ports
+
+| Variable | Required | Default | Description |
+|:---------|:--------:|:--------|:------------|
+| `BACKEND_PORT` | No | `8001` | Port for the FastAPI backend server. |
+| `FRONTEND_PORT` | No | `3782` | Port for the Next.js frontend server. |
+
+### LLM settings
+
+The primary language model used across all AI operations — chat, research, solving, and writing.
+
+| Variable | Required | Example | Description |
+|:---------|:--------:|:--------|:------------|
+| `LLM_BINDING` | Yes | `openai` | Provider identifier. See supported values below. |
+| `LLM_MODEL` | Yes | `gpt-4o` | Model name as recognized by the provider API. |
+| `LLM_API_KEY` | Yes | `sk-...` | API key for your LLM provider. |
+| `LLM_HOST` | Yes | `https://api.openai.com/v1` | API endpoint URL. |
+| `LLM_API_VERSION` | No | `2024-02-15-preview` | API version string. Required for Azure OpenAI only. |
+
+**Supported `LLM_BINDING` values:**
+
+`openai`, `azure_openai`, `anthropic`, `deepseek`, `openrouter`, `groq`, `together`, `mistral`, `ollama`, `lm_studio`, `vllm`, `llama_cpp`
+
+### Embedding settings
+
+The embedding model powers the RAG vector store used by every retrieval operation.
+
+| Variable | Required | Example | Description |
+|:---------|:--------:|:--------|:------------|
+| `EMBEDDING_BINDING` | Yes | `openai` | Provider identifier. See supported values below. |
+| `EMBEDDING_MODEL` | Yes | `text-embedding-3-small` | Embedding model name. |
+| `EMBEDDING_API_KEY` | Yes | `sk-...` | API key for the embedding provider. |
+| `EMBEDDING_HOST` | Yes | `https://api.openai.com/v1` | Embedding API endpoint URL. |
+| `EMBEDDING_DIMENSION` | Yes | `1536` | Vector output dimension. Must match your model exactly. |
+| `EMBEDDING_API_VERSION` | No | `2024-02-15-preview` | API version. Required for Azure OpenAI only. |
+
+**Supported `EMBEDDING_BINDING` values:**
+
+`openai`, `azure_openai`, `jina`, `cohere`, `huggingface`, `google`, `ollama`, `lm_studio`
+
+<Warning>
+  `EMBEDDING_DIMENSION` must match your model's actual output size. Mismatched dimensions will cause knowledge base indexing to fail. Common values: `text-embedding-3-small` → `1536`, `text-embedding-3-large` → `3072`.
+</Warning>
+
+### TTS settings
+
+Text-to-speech settings power the Co-writer's narration feature. All TTS variables are optional.
+
+| Variable | Required | Default | Example | Description |
+|:---------|:--------:|:--------|:--------|:------------|
+| `TTS_BINDING` | No | — | `openai` | Provider: `openai` or `azure_openai`. |
+| `TTS_MODEL` | No | — | `tts-1` | TTS model name. |
+| `TTS_API_KEY` | No | — | `sk-...` | TTS provider API key. Can be the same as `LLM_API_KEY` for OpenAI. |
+| `TTS_URL` | No | — | `https://api.openai.com/v1` | TTS API endpoint URL. |
+| `TTS_VOICE` | No | `alloy` | `nova` | Default voice. Options: `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`. |
+| `TTS_BINDING_API_VERSION` | No | — | `2024-05-01-preview` | API version for Azure OpenAI TTS. |
+
+### Search settings
+
+Web search is optional. When configured, it enables real-time web results in the solver, deep research, and co-writer modules.
+
+| Variable | Required | Default | Example | Description |
+|:---------|:--------:|:--------|:--------|:------------|
+| `SEARCH_PROVIDER` | No | `perplexity` | `tavily` | Search provider. Options: `perplexity`, `tavily`, `serper`, `jina`, `exa`. |
+| `SEARCH_API_KEY` | No | — | `pplx-...` | API key for your chosen search provider. |
+
+### Cloud and remote access
+
+| Variable | Required | Example | Description |
+|:---------|:--------:|:--------|:------------|
+| `NEXT_PUBLIC_API_BASE_EXTERNAL` | No | `https://your-server.com:8001` | Public backend URL for cloud deployments. The frontend browser uses this to reach the API. |
+| `NEXT_PUBLIC_API_BASE` | No | `http://192.168.1.100:8001` | Direct API base URL. Use this for LAN access from another device. |
+
+<Note>
+  When running locally with a single device, you do not need to set either of these. They are only required when the browser accessing the frontend is not on the same machine as the server.
+</Note>
+
+### Development and HuggingFace
+
+| Variable | Required | Default | Description |
+|:---------|:--------:|:--------|:------------|
+| `DISABLE_SSL_VERIFY` | No | `false` | Disable SSL certificate verification. Not recommended for production. |
+| `HF_ENDPOINT` | No | — | HuggingFace mirror endpoint URL. Useful in regions where `huggingface.co` is restricted. |
+| `HF_HOME` | No | — | HuggingFace model cache directory. Mount this path in Docker to reuse downloads across restarts. |
+| `HF_HUB_OFFLINE` | No | — | Set to `1` to force offline mode. Requires models already present in `HF_HOME`. |
+
+---
+
+## config/main.yaml
+
+`config/main.yaml` controls system behavior, paths, tool settings, and module-specific parameters. This file is read at startup and does not require a restart to take effect during development.
+
+### System
+
+```yaml
+system:
+  language: en   # "en" or "zh" — controls prompts and UI language
+```
+
+### Paths
+
+All paths are relative to the project root.
+
+```yaml
+paths:
+  user_data_dir: ./data/user
+  knowledge_bases_dir: ./data/knowledge_bases
+  user_log_dir: ./data/user/logs
+  performance_log_dir: ./data/user/performance
+  guide_output_dir: ./data/user/guide
+  question_output_dir: ./data/user/question
+  research_output_dir: ./data/user/research/cache
+  research_reports_dir: ./data/user/research/reports
+  solve_output_dir: ./data/user/solve
+```
+
+### Tools
+
+<ParamField path="tools.rag_tool.kb_base_dir" type="string" default="./data/knowledge_bases">
+  Root directory for all knowledge base data.
+</ParamField>
+
+<ParamField path="tools.rag_tool.default_kb" type="string" default="ai_textbook">
+  Default knowledge base name used when no KB is explicitly selected.
+</ParamField>
+
+<ParamField path="tools.run_code.workspace" type="string" default="./data/user/run_code_workspace">
+  Sandbox directory for code execution artifacts.
+</ParamField>
+
+<ParamField path="tools.web_search.enabled" type="boolean" default="true">
+  Global switch for web search across all modules. Setting this to `false` disables web search everywhere, regardless of module-level settings.
+</ParamField>
+
+<ParamField path="tools.web_search.provider" type="string" default="jina">
+  Active search provider. Can also be set via `SEARCH_PROVIDER` in `.env`. The `.env` value takes precedence.
+</ParamField>
+
+<ParamField path="tools.query_item.enabled" type="boolean" default="true">
+  Enable the entity lookup tool (queries the knowledge graph for structured items like definitions and theorems).
+</ParamField>
+
+<ParamField path="tools.query_item.max_results" type="number" default="5">
+  Maximum number of items returned per query_item call.
+</ParamField>
+
+### Logging
+
+```yaml
+logging:
+  level: DEBUG          # DEBUG, INFO, WARNING, or ERROR
+  save_to_file: true    # Write logs to data/user/logs/
+  console_output: true  # Print logs to terminal
+```
+
+### Question module
+
+```yaml
+question:
+  rag_query_count: 3         # Number of RAG queries used to retrieve background knowledge
+  max_parallel_questions: 1  # Parallel question generation workers
+  rag_mode: naive            # RAG mode for retrieval: "naive" or "hybrid"
+  agents:
+    retrieve:
+      top_k: 30              # Number of chunks retrieved per RAG query
+    generate:
+      max_retries: 2         # Retry attempts per question on generation failure
+    relevance_analyzer:
+      enabled: true          # Run post-generation relevance analysis
+```
+
+### Solve module
+
+```yaml
+solve:
+  max_solve_correction_iterations: 3  # Max self-correction cycles in the solve loop
+  enable_citations: true              # Include source citations in the final answer
+  save_intermediate_results: true     # Persist intermediate agent outputs to disk
+  agents:
+    investigate_agent:
+      max_actions_per_round: 1  # Tool calls per investigation round
+      max_iterations: 3         # Analysis loop iteration cap
+    precision_answer_agent:
+      enabled: true             # Enable final precision answer formatting step
+```
+
+### Research module
+
+The research module has the most configuration options due to its multi-phase pipeline.
+
+```yaml
+research:
+  planning:
+    rephrase:
+      enabled: true       # Run topic rephrasing before decomposition
+      max_iterations: 3   # Max rephrasing interaction rounds
+    decompose:
+      enabled: true
+      mode: auto          # "manual" (fixed count) or "auto" (agent decides)
+      initial_subtopics: 5
+      auto_max_subtopics: 8
+
+  researching:
+    max_iterations: 5          # Research iterations per topic block
+    execution_mode: series     # "series" or "parallel"
+    max_parallel_topics: 1     # Concurrent topics when execution_mode is "parallel"
+    new_topic_min_score: 0.85  # Minimum relevance score for dynamically discovered topics
+    enable_rag_naive: true
+    enable_rag_hybrid: true
+    enable_paper_search: true
+    enable_web_search: true    # Also governed by tools.web_search.enabled
+    enable_run_code: true
+    tool_timeout: 60           # Seconds before a tool call times out
+    tool_max_retries: 2
+    paper_search_years_limit: 3  # Limit paper search to the past N years
+
+  reporting:
+    min_section_length: 800      # Minimum character count per report section
+    enable_citation_list: true   # Append a references section to the report
+    enable_inline_citations: false  # Insert clickable [N] links inline in the report text
+
+  rag:
+    kb_name: DE-all       # Default knowledge base for research RAG
+    default_mode: hybrid  # "hybrid" or "naive"
+    fallback_mode: naive
+
+  queue:
+    max_length: 5  # Maximum topics in the dynamic research queue at once
+```
+
+#### Research presets
+
+Presets are applied on top of the base research configuration. Select a preset from the UI or CLI with `--preset`.
+
+| Preset | Subtopics | Max iterations | Min section length | Description |
+|:-------|:---------:|:--------------:|:-----------------:|:------------|
+| `quick` | 1 | 1 | 300 chars | Fast overview with minimal depth. |
+| `medium` | 5 | 4 | 500 chars | Balanced depth for most topics. |
+| `deep` | 8 | 7 | 800 chars | Thorough research with maximum coverage. |
+| `auto` | Up to 8 | Up to 6 | 500 chars | Agent decides depth within configured limits. |
+
+---
+
+## config/agents.yaml
+
+`agents.yaml` is the single source of truth for LLM `temperature` and `max_tokens` across all agent modules. Every agent in a given module shares the same settings.
+
+<Note>
+  Do not hardcode temperature or max_tokens in agent code. Always modify this file to change LLM behavior.
+</Note>
+
+### Module parameters
+
+| Module | `temperature` | `max_tokens` | Agents included |
+|:-------|:------------:|:------------:|:----------------|
+| `solve` | `0.3` | `8192` | InvestigateAgent, NoteAgent, ManagerAgent, SolveAgent, ToolAgent, ResponseAgent, PrecisionAnswerAgent |
+| `research` | `0.5` | `12000` | RephraseAgent, DecomposeAgent, ManagerAgent, ResearchAgent, NoteAgent, ReportingAgent |
+| `question` | `0.7` | `4096` | QuestionGenerationAgent, QuestionValidationAgent |
+| `guide` | `0.5` | `16192` | LocateAgent, InteractiveAgent, ChatAgent, SummaryAgent |
+| `ideagen` | `0.7` | `4096` | MaterialOrganizerAgent, IdeaGenerationWorkflow |
+| `co_writer` | `0.7` | `4096` | EditAgent |
+| `narrator` | `0.7` | `4000` | NarratorAgent (TTS script generation — limited by TTS character constraints) |
+
+### Example: reducing research verbosity
+
+To make research reports more concise, lower `max_tokens` and reduce `temperature`:
+
+```yaml
+# config/agents.yaml
+research:
+  temperature: 0.3
+  max_tokens: 8000
+```
+
+### Example: more creative question generation
+
+To generate more varied questions, raise the temperature for the question module:
+
+```yaml
+# config/agents.yaml
+question:
+  temperature: 0.9
+  max_tokens: 4096
+```
+
+---
+
+## Configuration hierarchy
+
+When the same setting exists at multiple levels, the higher-priority source wins:
+
+1. **Environment variables** (`.env`) — highest priority. Override everything.
+2. **`config/agents.yaml`** — LLM parameters only.
+3. **`config/main.yaml`** — all other system and module settings.
+
+<Tip>
+  Keep API keys and model names in `.env`. Keep behavioral tuning (temperatures, iteration limits, tool switches) in the YAML files. This separation makes it safe to commit your YAML files to version control without exposing secrets.
+</Tip>

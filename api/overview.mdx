@@ -1,0 +1,125 @@
+---
+title: "API overview"
+description: "REST and WebSocket endpoints for the DeepTutor backend."
+---
+
+The DeepTutor API is a [FastAPI](https://fastapi.tiangolo.com/) application that powers the frontend and exposes all AI capabilities as network services.
+
+## Base URL
+
+```
+http://localhost:8001
+```
+
+The port is configured in `config/main.yaml` under `server.backend_port`. Interactive API docs (Swagger UI) are available at:
+
+```
+http://localhost:8001/docs
+```
+
+## Route structure
+
+| Prefix | Description |
+|---|---|
+| `/api/v1/` | All versioned API routes |
+| `/api/outputs/` | Static files served from `data/user/` |
+
+## Authentication
+
+No authentication is required for self-hosted deployments. All endpoints are open by default. For production use, add your own authentication middleware before exposing the API publicly.
+
+## CORS
+
+The server currently allows all origins:
+
+```python
+allow_origins=["*"]
+```
+
+To restrict this in production, update `src/api/main.py` to specify your frontend origin.
+
+## Transport protocols
+
+The API uses both HTTP and WebSocket:
+
+- **REST (HTTP)**: Used for CRUD operations — knowledge base management, notebook management, co-writer operations, and session state retrieval.
+- **WebSocket**: Used for long-running AI tasks that stream progress and results — solving, research, question generation, idea generation, and guided learning.
+
+### WebSocket pattern
+
+All WebSocket endpoints follow the same pattern:
+
+<Steps>
+  <Step title="Connect">
+    Open a WebSocket connection to the endpoint URL.
+  </Step>
+  <Step title="Send initial message">
+    Send a JSON object with the task parameters as the first message.
+  </Step>
+  <Step title="Receive streaming messages">
+    The server streams typed JSON messages as the task progresses. Message types include `task_id`, `status`, `log`, `agent_status`, `token_stats`, `progress`, and `result`.
+  </Step>
+  <Step title="Receive final result">
+    The server sends a `type: "result"` message with the completed output, then closes the connection.
+  </Step>
+</Steps>
+
+### WebSocket message types
+
+| `type` | When sent | Description |
+|---|---|---|
+| `task_id` | After connection | Unique ID for this task run |
+| `session` | After connection (solve) | Session ID for conversation history |
+| `status` | At start and key stages | Human-readable status string |
+| `log` | During execution | Log lines from the agent |
+| `agent_status` | During execution | Per-agent status updates |
+| `token_stats` | During and after execution | LLM token usage and cost |
+| `progress` | During execution | Structured progress object |
+| `result` | On completion | Final output |
+| `error` | On failure | Error message string |
+| `complete` | On completion (some endpoints) | Signals the stream is done |
+
+## Static outputs
+
+Generated artifacts (images, PDFs, Markdown files) are served at:
+
+```
+/api/outputs/{module}/{task_dir}/{filename}
+```
+
+**Example:**
+
+```
+/api/outputs/solve/solve_20250101_120000/artifacts/diagram.png
+```
+
+This maps to the physical path `data/user/solve/solve_20250101_120000/artifacts/diagram.png` on the server.
+
+## Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Solve" icon="brain" href="/api/solve">
+    WebSocket AI problem solver with streaming agent logs and session history.
+  </Card>
+  <Card title="Research" icon="magnifying-glass" href="/api/research">
+    WebSocket deep research pipeline with topic optimization.
+  </Card>
+  <Card title="Knowledge" icon="database" href="/api/knowledge">
+    REST endpoints for creating and managing knowledge bases and document uploads.
+  </Card>
+  <Card title="Question" icon="circle-question" href="/api/question">
+    WebSocket question generation from knowledge base content.
+  </Card>
+  <Card title="Notebook" icon="book" href="/api/notebook">
+    REST endpoints for creating notebooks and saving learning records.
+  </Card>
+  <Card title="Co-writer" icon="pen" href="/api/co-writer">
+    REST endpoints for AI-assisted text editing, annotation, and TTS narration.
+  </Card>
+  <Card title="Guide" icon="graduation-cap" href="/api/guide">
+    REST and WebSocket endpoints for guided learning sessions.
+  </Card>
+  <Card title="IdeaGen" icon="lightbulb" href="/api/ideagen">
+    WebSocket research idea generation from notebook content.
+  </Card>
+</CardGroup>

@@ -1,0 +1,364 @@
+---
+title: "Co-writer"
+description: "REST endpoints for AI text editing, auto-annotation, document export, and TTS narration."
+---
+
+The Co-writer module provides AI assistance for writing. It can rewrite, shorten, or expand text using knowledge base or web sources; auto-annotate important terms; export content as Markdown; and convert notes into narrated audio scripts.
+
+## Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/v1/co_writer/edit` | Edit text with an AI instruction |
+| `POST` | `/api/v1/co_writer/automark` | Auto-annotate text |
+| `GET` | `/api/v1/co_writer/history` | List all edit operations |
+| `GET` | `/api/v1/co_writer/history/{operation_id}` | Get a single operation |
+| `GET` | `/api/v1/co_writer/tool_calls/{operation_id}` | Get tool call details for an operation |
+| `POST` | `/api/v1/co_writer/export/markdown` | Export content as a Markdown file |
+| `POST` | `/api/v1/co_writer/narrate` | Generate a narration script with optional TTS audio |
+| `POST` | `/api/v1/co_writer/narrate/script` | Generate a narration script only |
+| `GET` | `/api/v1/co_writer/tts/status` | Check TTS service availability |
+| `GET` | `/api/v1/co_writer/tts/voices` | List available TTS voices |
+
+---
+
+## `POST /api/v1/co_writer/edit`
+
+Edit a piece of text according to an instruction. The agent can optionally query a knowledge base or the web to ground its edits.
+
+### Request body
+
+<ParamField body="text" type="string" required>
+  The text to edit.
+</ParamField>
+
+<ParamField body="instruction" type="string" required>
+  Natural-language instruction describing the desired edit, e.g. `"Make this more concise"`.
+</ParamField>
+
+<ParamField body="action" type="string" default='"rewrite"'>
+  Edit action. One of `"rewrite"`, `"shorten"`, or `"expand"`.
+</ParamField>
+
+<ParamField body="source" type="string">
+  Optional grounding source. One of `"rag"` (knowledge base) or `"web"`. Omit to edit without external context.
+</ParamField>
+
+<ParamField body="kb_name" type="string">
+  Knowledge base to use when `source` is `"rag"`.
+</ParamField>
+
+### Response
+
+<ResponseField name="edited_text" type="string">
+  The edited version of the input text.
+</ResponseField>
+
+<ResponseField name="operation_id" type="string">
+  Unique identifier for this edit operation. Use with the history endpoints.
+</ResponseField>
+
+<RequestExample>
+
+```bash cURL
+curl -X POST http://localhost:8001/api/v1/co_writer/edit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Gradient descent is a method used to minimize a function by iteratively moving in the direction of steepest descent.",
+    "instruction": "Simplify this for a high school student.",
+    "action": "rewrite"
+  }'
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "edited_text": "Gradient descent is a way to find the lowest point of a mathematical function by taking small steps downhill each time.",
+  "operation_id": "op_abc123"
+}
+```
+
+</ResponseExample>
+
+---
+
+## `POST /api/v1/co_writer/automark`
+
+Automatically detect and annotate important terms, concepts, or entities in the text.
+
+### Request body
+
+<ParamField body="text" type="string" required>
+  The text to annotate.
+</ParamField>
+
+### Response
+
+<ResponseField name="marked_text" type="string">
+  The annotated text with highlights or markup applied.
+</ResponseField>
+
+<ResponseField name="operation_id" type="string">
+  Unique identifier for this operation.
+</ResponseField>
+
+<RequestExample>
+
+```bash cURL
+curl -X POST http://localhost:8001/api/v1/co_writer/automark \
+  -H "Content-Type: application/json" \
+  -d '{ "text": "The transformer architecture uses self-attention and positional encodings." }'
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "marked_text": "The **transformer architecture** uses **self-attention** and **positional encodings**.",
+  "operation_id": "op_def456"
+}
+```
+
+</ResponseExample>
+
+---
+
+## `GET /api/v1/co_writer/history`
+
+List all past edit and annotation operations.
+
+```bash
+curl http://localhost:8001/api/v1/co_writer/history
+```
+
+<ResponseField name="history" type="object[]">
+  Array of operation records.
+</ResponseField>
+
+<ResponseField name="total" type="number">
+  Total number of operations.
+</ResponseField>
+
+---
+
+## `GET /api/v1/co_writer/history/{operation_id}`
+
+Get detailed information about a single operation.
+
+<ParamField path="operation_id" type="string" required>
+  Operation identifier.
+</ParamField>
+
+Returns `404` if the operation is not found.
+
+---
+
+## `GET /api/v1/co_writer/tool_calls/{operation_id}`
+
+Get the raw tool call log for an operation, including all LLM tool invocations made during editing.
+
+<ParamField path="operation_id" type="string" required>
+  Operation identifier.
+</ParamField>
+
+Returns `404` if no tool calls are recorded for this operation.
+
+---
+
+## `POST /api/v1/co_writer/export/markdown`
+
+Download the current document content as a `.md` file.
+
+### Request body
+
+<ParamField body="content" type="string">
+  Markdown content to export.
+</ParamField>
+
+<ParamField body="filename" type="string" default='"document.md"'>
+  Filename for the downloaded file.
+</ParamField>
+
+The response is a file download with `Content-Type: text/markdown`.
+
+```bash
+curl -X POST http://localhost:8001/api/v1/co_writer/export/markdown \
+  -H "Content-Type: application/json" \
+  -d '{ "content": "# My Notes\n\nContent here.", "filename": "notes.md" }' \
+  --output notes.md
+```
+
+---
+
+## `POST /api/v1/co_writer/narrate`
+
+Generate a narration script from note content and optionally synthesize it into audio using TTS.
+
+### Request body
+
+<ParamField body="content" type="string" required>
+  The note or document content to narrate.
+</ParamField>
+
+<ParamField body="style" type="string" default='"friendly"'>
+  Narration style. One of:
+  - `"friendly"` — Warm, approachable tutor style.
+  - `"academic"` — Rigorous academic lecture style.
+  - `"concise"` — Efficient, minimal knowledge delivery.
+</ParamField>
+
+<ParamField body="voice" type="string">
+  TTS voice to use. One of `"alloy"`, `"echo"`, `"fable"`, `"onyx"`, `"nova"`, `"shimmer"`. Defaults to the configured TTS default.
+</ParamField>
+
+<ParamField body="skip_audio" type="boolean" default="false">
+  Set to `true` to return only the script without generating audio.
+</ParamField>
+
+### Response
+
+<ResponseField name="script" type="string">
+  The generated narration script.
+</ResponseField>
+
+<ResponseField name="key_points" type="string[]">
+  Key points extracted from the content.
+</ResponseField>
+
+<ResponseField name="style" type="string">
+  The narration style used.
+</ResponseField>
+
+<ResponseField name="original_length" type="number">
+  Character count of the input content.
+</ResponseField>
+
+<ResponseField name="script_length" type="number">
+  Character count of the generated script.
+</ResponseField>
+
+<ResponseField name="has_audio" type="boolean">
+  Whether an audio file was generated.
+</ResponseField>
+
+<ResponseField name="audio_url" type="string">
+  URL to the generated audio file. `null` if `skip_audio` was `true` or TTS failed.
+</ResponseField>
+
+<ResponseField name="audio_id" type="string">
+  Identifier for the audio file. `null` if not generated.
+</ResponseField>
+
+<ResponseField name="voice" type="string">
+  Voice used for TTS. `null` if not generated.
+</ResponseField>
+
+<ResponseField name="audio_error" type="string">
+  Error message if audio generation failed but the script was still returned.
+</ResponseField>
+
+<RequestExample>
+
+```bash cURL
+curl -X POST http://localhost:8001/api/v1/co_writer/narrate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Backpropagation computes gradients by applying the chain rule from output to input layers.",
+    "style": "friendly",
+    "voice": "nova",
+    "skip_audio": false
+  }'
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+  "script": "Hey there! Today let's talk about backpropagation...",
+  "key_points": ["chain rule", "gradient computation", "layer-by-layer"],
+  "style": "friendly",
+  "original_length": 84,
+  "script_length": 312,
+  "has_audio": true,
+  "audio_url": "/api/outputs/co_writer/audio/narration_abc123.mp3",
+  "audio_id": "narration_abc123",
+  "voice": "nova",
+  "audio_error": null
+}
+```
+
+</ResponseExample>
+
+---
+
+## `POST /api/v1/co_writer/narrate/script`
+
+Generate a narration script without audio. Faster than the full `/narrate` endpoint.
+
+### Request body
+
+<ParamField body="content" type="string" required>
+  The note or document content to narrate.
+</ParamField>
+
+<ParamField body="style" type="string" default='"friendly"'>
+  Narration style: `"friendly"`, `"academic"`, or `"concise"`.
+</ParamField>
+
+---
+
+## `GET /api/v1/co_writer/tts/status`
+
+Check whether TTS is configured and available.
+
+```bash
+curl http://localhost:8001/api/v1/co_writer/tts/status
+```
+
+```json
+{
+  "available": true,
+  "model": "tts-1",
+  "default_voice": "alloy"
+}
+```
+
+If TTS is not configured:
+
+```json
+{
+  "available": false,
+  "error": "TTS configuration not found",
+  "hint": "Please configure TTS_MODEL, TTS_API_KEY, TTS_URL in .env file"
+}
+```
+
+---
+
+## `GET /api/v1/co_writer/tts/voices`
+
+List the available TTS voice options.
+
+```bash
+curl http://localhost:8001/api/v1/co_writer/tts/voices
+```
+
+```json
+{
+  "voices": [
+    { "id": "alloy",   "name": "Alloy",   "description": "Neutral and balanced voice" },
+    { "id": "echo",    "name": "Echo",    "description": "Warm and conversational voice" },
+    { "id": "fable",   "name": "Fable",   "description": "Expressive and dramatic voice" },
+    { "id": "onyx",    "name": "Onyx",    "description": "Deep and authoritative voice" },
+    { "id": "nova",    "name": "Nova",    "description": "Friendly and upbeat voice" },
+    { "id": "shimmer", "name": "Shimmer", "description": "Clear and pleasant voice" }
+  ]
+}
+```

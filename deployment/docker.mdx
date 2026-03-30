@@ -1,0 +1,193 @@
+---
+title: "Docker deployment"
+description: "Deploy DeepTutor using Docker and Docker Compose. No Python or Node.js setup required."
+---
+
+## Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) 20.10+
+- [Docker Compose](https://docs.docker.com/compose/install/) v2.0+
+
+## Quick start
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/HKUDS/DeepTutor.git
+    cd DeepTutor
+    ```
+  </Step>
+  <Step title="Configure environment variables">
+    ```bash
+    cp .env.example .env
+    ```
+
+    Edit `.env` and fill in your API keys. At minimum, set `LLM_API_KEY`, `LLM_MODEL`, `LLM_HOST`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, and `EMBEDDING_HOST`.
+
+    See [Environment variables](/deployment/environment-variables) for a full reference.
+  </Step>
+  <Step title="Build and start the container">
+    ```bash
+    docker compose up
+    ```
+
+    The first build takes approximately 10–15 minutes. Subsequent starts are fast.
+
+    Once running, open your browser to:
+    - **Frontend**: http://localhost:3782
+    - **API docs**: http://localhost:8001/docs
+  </Step>
+</Steps>
+
+<Note>
+  To run in the background, use `docker compose up -d`. View logs at any time with `docker compose logs -f`.
+</Note>
+
+## Using a pre-built image
+
+Pull from the GitHub Container Registry instead of building from source:
+
+```bash
+docker run -d --name deeptutor \
+  -p 8001:8001 -p 3782:3782 \
+  --env-file .env \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/config:/app/config:ro \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+<Note>
+  On Windows PowerShell, replace `$(pwd)` with `${PWD}`.
+</Note>
+
+Docker automatically detects your system architecture (Intel/AMD or Apple Silicon/ARM) and pulls the correct image variant.
+
+### Image tags
+
+| Tag | Architectures | Description |
+|-----|---------------|-------------|
+| `:latest` | AMD64 + ARM64 | Latest stable release, auto-detects your architecture |
+| `:v0.5.x` | AMD64 + ARM64 | Specific version, auto-detects your architecture |
+| `:v0.5.x-amd64` | AMD64 only | Explicit AMD64 image |
+| `:v0.5.x-arm64` | ARM64 only | Explicit ARM64 image |
+
+## Common commands
+
+```bash
+# Start containers in the background
+docker compose up -d
+
+# Stop containers
+docker compose down
+
+# View live logs
+docker compose logs -f
+
+# Rebuild after pulling new source code
+docker compose up --build
+
+# Clear cache and rebuild from scratch
+docker compose build --no-cache
+```
+
+## Cloud deployment
+
+When deploying to a remote server, the browser makes API requests to your server's public address — not `localhost`. You must set `NEXT_PUBLIC_API_BASE_EXTERNAL` to tell the frontend where the backend is reachable.
+
+```bash
+docker run -d --name deeptutor \
+  -p 8001:8001 -p 3782:3782 \
+  -e NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:8001 \
+  --env-file .env \
+  -v $(pwd)/data:/app/data \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+<Warning>
+  Without `NEXT_PUBLIC_API_BASE_EXTERNAL`, the frontend will try to contact `localhost:8001` from the user's browser, which will fail on remote deployments.
+</Warning>
+
+## Custom ports
+
+To change the default ports (backend `8001`, frontend `3782`), set both the environment variables **and** the port mappings:
+
+```bash
+docker run -d --name deeptutor \
+  -p 9001:9001 -p 3000:3000 \
+  -e BACKEND_PORT=9001 \
+  -e FRONTEND_PORT=3000 \
+  -e NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:9001 \
+  --env-file .env \
+  -v $(pwd)/data:/app/data \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+<Warning>
+  The `-p` port mappings must match the `BACKEND_PORT` and `FRONTEND_PORT` values exactly.
+</Warning>
+
+## Nginx reverse proxy
+
+For HTTPS access, configure nginx as a reverse proxy in front of DeepTutor. The configuration below handles the frontend, backend API, and WebSocket connections.
+
+```nginx
+# Frontend
+location / {
+    proxy_pass http://localhost:3782;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# Backend API
+location /api/ {
+    proxy_pass http://localhost:8001;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# WebSocket support
+location /api/v1/ {
+    proxy_pass http://localhost:8001;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+When using an HTTPS reverse proxy, set `NEXT_PUBLIC_API_BASE` in your `.env` file to the public HTTPS URL so the frontend sends requests to the correct address:
+
+```bash
+NEXT_PUBLIC_API_BASE=https://your-domain.com
+```
+
+<Tip>
+  The `X-Forwarded-Proto $scheme` header is important. It prevents FastAPI from issuing HTTP redirects when the original request came in over HTTPS.
+</Tip>
+
+## Volume mounts
+
+The `docker-compose.yml` mounts two directories from your host into the container:
+
+| Host path | Container path | Purpose |
+|-----------|----------------|---------|
+| `./data/user` | `/app/data/user` | User activity data (solve results, research reports, etc.) |
+| `./data/knowledge_bases` | `/app/data/knowledge_bases` | Knowledge base files |
+| `./config` | `/app/config` (read-only) | Agent and pipeline configuration |
+
+Data written inside the container is persisted to your host machine through these mounts. Knowledge bases and outputs survive container restarts and upgrades.
+
+## Development mode
+
+Use the development override file to enable hot-reload for both the backend and frontend:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+```
+
+This mounts your local source code into the container and starts uvicorn with `--reload`, so changes to `src/` and `web/` take effect without rebuilding.

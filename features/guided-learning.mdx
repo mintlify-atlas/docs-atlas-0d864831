@@ -1,0 +1,122 @@
+---
+title: "Guided learning"
+description: "A multi-agent personalized learning system that turns your notebook records into interactive visual lessons with intelligent Q&A."
+---
+
+Guided Learning converts the records saved in your notebooks into a structured, progressive learning experience. A pipeline of four specialized agents analyses your material, generates an interactive HTML lesson for each knowledge point, answers questions in context, and summarizes what you have learned.
+
+## Multi-agent flow
+
+```
+Notebook records
+      ↓
+ LocateAgent        — identifies 3–5 progressive knowledge points
+      ↓
+ InteractiveAgent   — generates an interactive HTML page per knowledge point
+      ↓
+ ChatAgent          — answers questions during the lesson (per knowledge point)
+      ↓
+ SummaryAgent       — generates a personalized learning summary at the end
+```
+
+### Agent responsibilities
+
+| Agent | Responsibility |
+|:--|:--|
+| `LocateAgent` | Analyses all records in the selected notebook(s) and organizes them into 3–5 core knowledge points arranged in a progressive learning order |
+| `InteractiveAgent` | Converts each knowledge point into a visual, interactive HTML page with appropriate interactive elements based on the content type; includes HTML bug-fixing capability |
+| `ChatAgent` | Answers questions during a knowledge point lesson; responses are grounded in the current knowledge point and your chat history within that point |
+| `SummaryAgent` | After all knowledge points are completed, generates a learning summary covering what was covered, mastery assessment, and follow-up suggestions |
+
+## Starting a guided learning session
+
+<Steps>
+  <Step title="Open guided learning">
+    Navigate to `http://localhost:3782/guide` (or access it from the dashboard).
+  </Step>
+  <Step title="Select one or more notebooks">
+    Choose the notebook(s) that contain the records you want to learn from. Cross-notebook selection is supported — you can combine records from multiple notebooks into a single session.
+  </Step>
+  <Step title="Generate the learning plan">
+    Click **Generate Learning Plan**. LocateAgent analyses the notebook content and identifies 3–5 knowledge points in progressive order. The plan is displayed before you start so you can see what will be covered.
+  </Step>
+  <Step title="Start learning">
+    Click **Start Learning**. InteractiveAgent generates the HTML page for the first knowledge point. The interactive page appears on the right side of the screen.
+  </Step>
+  <Step title="Ask questions">
+    Type questions in the chat box on the left. ChatAgent answers based on the current knowledge point and your conversation history within it.
+  </Step>
+  <Step title="Move to the next knowledge point">
+    When you are ready, click **Next**. InteractiveAgent generates the page for the following knowledge point.
+  </Step>
+  <Step title="Complete the session">
+    After the final knowledge point, SummaryAgent generates your personalized learning summary, including a mastery assessment and recommendations for further study.
+  </Step>
+</Steps>
+
+## Cross-notebook selection
+
+You can draw records from multiple notebooks into a single guided learning session. This is useful when you have notes spread across different notebooks — for example, solve results in one notebook and research summaries in another — and want a unified lesson that connects them.
+
+Select multiple notebooks on the session setup screen before generating the learning plan. LocateAgent merges all records from the selected notebooks when identifying knowledge points.
+
+## Interactive HTML pages
+
+Each knowledge point is rendered as a self-contained HTML page designed to make the concept concrete and engaging. InteractiveAgent chooses the interaction style based on the content:
+
+- Step-by-step breakdowns for algorithms and proofs
+- Diagrams and visual aids for conceptual material
+- Worked examples for mathematical content
+
+If the LLM generates HTML with rendering issues, the system includes a built-in debug and fix step. You can also trigger an HTML fix manually via the API endpoint `POST /api/v1/guide/fix_html`.
+
+<Note>
+  Interactive pages are generated on demand — each page is created when you advance to that knowledge point, not upfront. Generation takes a few seconds.
+</Note>
+
+## Session persistence
+
+Session state is saved automatically throughout the session. This includes:
+
+- The full knowledge point plan
+- The HTML page for each visited knowledge point
+- The complete chat history for each knowledge point
+- Your current position in the learning plan
+
+If you close the browser or lose connectivity, you can resume exactly where you left off by returning to the same session. Sessions are stored indefinitely until you delete them.
+
+```
+data/user/guide/
+└── session_{session_id}.json    # Complete session state, knowledge points, chat history
+```
+
+## API reference
+
+The guided learning module exposes a REST API and a WebSocket endpoint for real-time interaction.
+
+<AccordionGroup>
+  <Accordion title="REST endpoints">
+    | Method | Endpoint | Description |
+    |:--|:--|:--|
+    | `POST` | `/api/v1/guide/create_session` | Create a new learning session |
+    | `POST` | `/api/v1/guide/start` | Start learning (triggers first InteractiveAgent run) |
+    | `POST` | `/api/v1/guide/next` | Advance to the next knowledge point |
+    | `POST` | `/api/v1/guide/chat` | Send a chat message to ChatAgent |
+    | `POST` | `/api/v1/guide/fix_html` | Re-run HTML generation for the current page |
+    | `GET` | `/api/v1/guide/session/{session_id}` | Retrieve full session state |
+    | `GET` | `/api/v1/guide/session/{session_id}/html` | Retrieve the current HTML page |
+  </Accordion>
+  <Accordion title="WebSocket">
+    Connect to `WS /api/v1/guide/ws/{session_id}` for real-time streaming of agent outputs and progress events during HTML generation and chat responses.
+  </Accordion>
+</AccordionGroup>
+
+## Tips for best results
+
+<Tip>
+  Guided Learning works best when your notebooks contain rich records from multiple DeepTutor modules — solve results, research summaries, and generated questions all contribute context that LocateAgent uses to build a well-rounded learning plan.
+</Tip>
+
+<Tip>
+  The system automatically generates 3–5 knowledge points. If a notebook has very few records, the plan may be shorter. Add more records to the notebook first for a more comprehensive session.
+</Tip>
